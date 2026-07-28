@@ -1,0 +1,24 @@
+{
+  "schema_version": 3,
+  "key_path": "sense_id",
+  "source_language": "en",
+  "target_language": "vi",
+  "source": "curated-seed-plus-skeleton",
+  "records": 185129,
+  "filled_records": 57438,
+  "placeholder_records": 127691,
+  "core_senses": 185129,
+  "coverage": 0.3102593326815356,
+  "fields": [
+    "sense_id",
+    "meaning",
+    "examples",
+    "collocations"
+  ],
+  "schema": "packs/en/trans-vi/schema.json",
+  "output": {
+    "path": "packs/en/trans-vi/data.jsonl",
+    "sha256": "c10eb6942b1f45e0138e1b756e73e421cca3e11c604d5e06bcc22052c86173df",
+    "bytes": 16263302
+  }
+}

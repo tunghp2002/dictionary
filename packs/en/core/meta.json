@@ -1,0 +1,35 @@
+{
+  "schema_version": 3,
+  "key_path": "word",
+  "sense_id": {
+    "format": "namespace * 10^12 + local_id",
+    "language": "en",
+    "namespace": 1,
+    "registry": "packs/en/core/sense-ids.tsv"
+  },
+  "license": "CC-BY-SA-4.0",
+  "attribution": "DATA_LICENSES.md",
+  "records": 128009,
+  "senses": 185129,
+  "reserved_sense_ids": 185129,
+  "with_ipa": 27940,
+  "with_level": 8336,
+  "with_frequency": 103812,
+  "senses_with_grammar": 25096,
+  "schema": "packs/en/core/schema.json",
+  "sources": {
+    "open_english_wordnet": {
+      "release": "2025-edition",
+      "commit": "dc343f2683279ecbb13fab4e2fd778d7b162d287"
+    },
+    "cefrj": {
+      "commit": "d4e45b75b38f27b30dfc5c44d8c571aec7e7092f"
+    },
+    "wordfreq": "3.1.1"
+  },
+  "output": {
+    "path": "packs/en/core/data.jsonl",
+    "sha256": "80a8754a407af2aaef913bed4b151e3c3f719ab358a2cebaabb5e870cc387445",
+    "bytes": 14336978
+  }
+}

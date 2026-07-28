@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "English core dictionary record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["word", "senses"],
+  "properties": {
+    "word": {"type": "string", "minLength": 1},
+    "ipa": {"type": "string", "minLength": 1},
+    "level": {"enum": ["A1", "A2", "B1", "B2", "C1", "C2"]},
+    "frequency": {"type": "integer", "minimum": 1},
+    "senses": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sense"}
+    }
+  },
+  "$defs": {
+    "uniqueEnumArray": {
+      "type": "array",
+      "uniqueItems": true
+    },
+    "sense": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pos"],
+      "properties": {
+        "id": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "pos": {"enum": ["noun", "verb", "adj", "adv"]},
+        "expression_type": {
+          "enum": ["compound", "phrasal_verb", "idiom"],
+          "description": "Omitted for an ordinary single word."
+        },
+        "grammar": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "countability": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"items": {"enum": ["countable", "uncountable"]}}
+              ]
+            },
+            "verb_type": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"items": {"enum": ["transitive", "intransitive", "linking"]}}
+              ]
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "register": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"items": {"enum": ["formal", "informal", "slang", "literary", "vulgar"]}}
+              ]
+            },
+            "usage": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"items": {"enum": ["archaic", "dated", "derogatory", "euphemistic", "figurative", "humorous", "offensive", "rare"]}}
+              ]
+            },
+            "region": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"items": {"enum": ["AU", "CA", "GB", "IE", "IN", "NZ", "US", "ZA"]}}
+              ]
+            },
+            "domains": {
+              "allOf": [
+                {"$ref": "#/$defs/uniqueEnumArray"},
+                {"maxItems": 2},
+                {"items": {"enum": ["agriculture", "arts", "business", "economics", "education", "environment", "finance", "food", "history", "law", "linguistics", "medicine", "military", "music", "politics", "psychology", "religion", "science", "sports", "technology", "transport"]}}
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
