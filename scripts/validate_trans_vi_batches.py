@@ -9,6 +9,7 @@ from typing import Any
 
 
 TRANSLATION_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
+LEGACY_TRANSLATION_FIELDS = TRANSLATION_FIELDS - {"description"}
 CJK_RANGES = ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF))
 
 
@@ -24,7 +25,14 @@ def read_records(path: Path) -> list[tuple[int, dict[str, Any]]]:
     return records
 
 
-def _validate(path: Path, target_ids: set[int], require_descriptions: bool, reject_non_targets: bool) -> list[str]:
+def normalize_legacy_seed_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Add the required empty description to an otherwise valid legacy record."""
+    if set(record) == LEGACY_TRANSLATION_FIELDS:
+        return {**record, "description": ""}
+    return record
+
+
+def _validate(path: Path, target_ids: set[int], require_descriptions: bool, reject_non_targets: bool, normalize_legacy: bool = False) -> list[str]:
     errors: list[str] = []
     seen: set[int] = set()
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -38,6 +46,8 @@ def _validate(path: Path, target_ids: set[int], require_descriptions: bool, reje
         if not isinstance(record, dict):
             errors.append(f"line {line_number}: record is not an object")
             continue
+        if normalize_legacy:
+            record = normalize_legacy_seed_record(record)
         sense_id = record.get("sense_id")
         if not isinstance(sense_id, int) or isinstance(sense_id, bool):
             errors.append(f"line {line_number}: invalid sense_id")
@@ -86,6 +96,6 @@ def validate_batch(path: Path, target_ids: set[int], require_descriptions: bool 
     return _validate(path, target_ids, require_descriptions, reject_non_targets=True)
 
 
-def validate_seed(path: Path, target_ids: set[int]) -> list[str]:
+def validate_seed(path: Path, target_ids: set[int], require_descriptions: bool = True) -> list[str]:
     """Validate seed schema while allowing non-target placeholder records."""
-    return _validate(path, target_ids, require_descriptions=True, reject_non_targets=False)
+    return _validate(path, target_ids, require_descriptions=require_descriptions, reject_non_targets=False, normalize_legacy=True)

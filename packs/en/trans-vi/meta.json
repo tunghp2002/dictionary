@@ -5,10 +5,10 @@
   "target_language": "vi",
   "source": "curated-seed-plus-skeleton",
   "records": 185129,
-  "filled_records": 57438,
-  "placeholder_records": 127691,
+  "filled_records": 57446,
+  "placeholder_records": 127683,
   "core_senses": 185129,
-  "coverage": 0.3102593326815356,
+  "coverage": 0.3103025457923934,
   "fields": [
     "sense_id",
     "meaning",
@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "e3bccc1de447fb5ae67132fa146fc2e35559d5c1872e9a1f79d01ced622fc826",
-    "bytes": 19595624
+    "sha256": "1076c3c4b037e117e8e0d2548f0c92c7c4f1368e86acb34e91a5442563f1433c",
+    "bytes": 21218796
   }
 }

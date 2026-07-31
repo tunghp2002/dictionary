@@ -99,6 +99,21 @@ class ValidateTransViBatchesTest(unittest.TestCase):
             self.assertEqual(merge_batches([batch], output, {2, 3}, output), 2)
             self.assertEqual(output.read_text(encoding="utf-8").splitlines(), [json.dumps(row, ensure_ascii=False, separators=(",", ":")) for row in first])
 
+    def test_merge_normalizes_legacy_seed_records_before_validation(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            seed, batch, output = root / "seed.jsonl", root / "batch.jsonl", root / "out.jsonl"
+            legacy_non_target = {"sense_id": 99, "meaning": "seed", "examples": [], "collocations": []}
+            legacy_target = {"sense_id": 2, "meaning": "old", "examples": [], "collocations": []}
+            write_jsonl(seed, [legacy_non_target, legacy_target])
+            write_jsonl(batch, [record(2, "new", "Replacement gloss.")])
+
+            self.assertEqual(merge_batches([batch], seed, {2}, output), 1)
+            self.assertEqual(
+                [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()],
+                [record(2, "new", "Replacement gloss."), record(99, "seed", "")],
+            )
+
     def test_merge_rejects_conflicting_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

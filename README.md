@@ -86,6 +86,17 @@ Kết quả:
 - `packs/en/trans-vi/seed.jsonl`: các record translation đã điền thủ công.
 - `packs/en/trans-vi/meta.json`: số record đã điền, placeholder và checksum.
 
+### English–Vietnamese curated target
+
+`packs/en/trans-vi/target-manifest.json` chọn 30.000 lemma tiếng Anh có tần
+suất cao nhất (thứ tự xác định), tương ứng 57.446 sense ID. Các mô tả
+`description` là gloss tiếng Anh từ Open English WordNet trong hàng đợi review;
+chúng cung cấp ngữ cảnh phân biệt nghĩa, không phải bản dịch. Bản dịch
+`meaning` phải là nghĩa tiếng Việt ngắn gọn (tối đa 35 ký tự), không chứa chữ
+Hán và không lặp lại toàn bộ gloss. Các batch đã duyệt trong
+`packs/en/trans-vi/review/batches/` ghi đè record target theo `sense_id`, còn
+ví dụ và collocation của record được giữ nguyên.
+
 Core sense dùng schema chung. Các trường metadata rỗng được bỏ khỏi JSONL để
 giảm kích thước:
 
