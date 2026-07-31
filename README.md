@@ -138,6 +138,7 @@ Translation pack chỉ chứa dữ liệu theo ngôn ngữ:
 {
   "sense_id": 1000000075634,
   "meaning": "nặng",
+  "description": "of comparatively great physical weight or density",
   "examples": [
     {"en": "This box is heavy.", "vi": "Cái hộp này nặng."}
   ],
@@ -145,10 +146,10 @@ Translation pack chỉ chứa dữ liệu theo ngôn ngữ:
 }
 ```
 
-Khung hiện có toàn bộ `185.129` sense của core; `57.438` sense đã có
-`meaning` (gồm seed thủ công và lượt DeepSeek đầu tiên), còn lại để
-trống. `examples`/`collocations` sẽ fill ở phase sau cho nhóm từ phổ biến.
-Khi fill thêm, cập nhật `seed.jsonl` rồi chạy `scripts/build_trans_vi_skeleton.py`;
+Khung hiện có toàn bộ `185.129` sense của core. Target đã hoàn tất `57.446`
+sense (coverage `31,03%`); `127.683` sense ngoài target vẫn là placeholder.
+`examples`/`collocations` sẽ fill ở phase sau cho nhóm từ phổ biến. Khi fill
+thêm, cập nhật `seed.jsonl` rồi chạy `scripts/build_trans_vi_skeleton.py`;
 không tạo ID mới ở translation.
 
 Kiểm thử:

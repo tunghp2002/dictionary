@@ -114,6 +114,25 @@ class ValidateTransViBatchesTest(unittest.TestCase):
                 [record(2, "new", "Replacement gloss."), record(99, "seed", "")],
             )
 
+    def test_merge_preserves_seed_examples_and_collocations_when_replacing_target(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            seed, batch, output = root / "seed.jsonl", root / "batch.jsonl", root / "out.jsonl"
+            seeded = record(2, "old", "Old gloss.")
+            seeded["examples"] = [{"en": "A seed example.", "vi": "Ví dụ từ seed."}]
+            seeded["collocations"] = ["seed collocation"]
+            replacement = record(2, "new", "Replacement gloss.")
+            replacement["examples"] = [{"en": "An edited batch example.", "vi": "Ví dụ batch."}]
+            replacement["collocations"] = ["batch collocation"]
+            write_jsonl(seed, [seeded])
+            write_jsonl(batch, [replacement])
+
+            self.assertEqual(merge_batches([batch], seed, {2}, output), 1)
+            self.assertEqual(
+                [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()],
+                [{**replacement, "examples": seeded["examples"], "collocations": seeded["collocations"]}],
+            )
+
     def test_merge_rejects_conflicting_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

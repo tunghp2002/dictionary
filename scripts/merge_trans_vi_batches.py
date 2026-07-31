@@ -40,7 +40,14 @@ def merge_batches(batch_paths, seed_path: Path, target_ids: set[int], output_pat
         if sense_id in merged:
             raise ValueError(f"duplicate seed sense_id {sense_id}")
         merged[sense_id] = record
-    merged.update(batches)
+    for sense_id, batch in batches.items():
+        seed_record = merged.get(sense_id)
+        if seed_record is not None:
+            batch = {
+                **batch,
+                **{field: seed_record[field] for field in ("examples", "collocations") if field in seed_record},
+            }
+        merged[sense_id] = batch
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
     temporary_path.write_text(
