@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.validate_trans_vi_batches import read_records, validate_batch
+from scripts.validate_trans_vi_batches import read_records, validate_batch, validate_seed
 
 
 def merge_batches(batch_paths, seed_path: Path, target_ids: set[int], output_path: Path) -> int:
@@ -23,6 +23,9 @@ def merge_batches(batch_paths, seed_path: Path, target_ids: set[int], output_pat
                 raise ValueError(f"conflicting sense_id {sense_id}")
             batches[sense_id] = record
 
+    seed_errors = validate_seed(seed_path, target_ids)
+    if seed_errors:
+        raise ValueError(f"invalid seed {seed_path}: {'; '.join(seed_errors)}")
     merged = {}
     for _, record in read_records(seed_path):
         sense_id = record.get("sense_id")

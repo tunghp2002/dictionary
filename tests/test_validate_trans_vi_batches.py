@@ -65,6 +65,26 @@ class ValidateTransViBatchesTest(unittest.TestCase):
             path.write_text("{not json}\n", encoding="utf-8")
             self.assertEqual(validate_batch(path, {2}), ["line 1: invalid JSON"])
 
+    def test_rejects_nested_field_drift_and_reports_combined_meaning_errors(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            path = Path(temp_name) / "batch.jsonl"
+            bad_example = record(2)
+            bad_example["examples"] = [{"en": "source"}]
+            bad_collocations = record(3)
+            bad_collocations["collocations"] = ["valid", 4]
+            combined = record(4, meaning="中" * 36)
+            write_jsonl(path, [record(1, meaning="x" * 35), bad_example, bad_collocations, combined])
+
+            self.assertEqual(
+                validate_batch(path, {1, 2, 3, 4}),
+                [
+                    "line 2: invalid examples for sense_id 2",
+                    "line 3: invalid collocations for sense_id 3",
+                    "line 4: CJK text in meaning for sense_id 4",
+                    "line 4: meaning exceeds 35 characters for sense_id 4",
+                ],
+            )
+
     def test_merge_is_idempotent_and_preserves_non_target_seed_records(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
@@ -89,6 +109,24 @@ class ValidateTransViBatchesTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "conflicting sense_id 2"):
                 merge_batches([first, second], seed, {2}, output)
+            self.assertFalse(output.exists())
+
+    def test_merge_accepts_repeated_identical_batches(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            batch, seed, output = root / "batch.jsonl", root / "seed.jsonl", root / "out.jsonl"
+            write_jsonl(batch, [record(2)])
+            write_jsonl(seed, [])
+            self.assertEqual(merge_batches([batch, batch], seed, {2}, output), 1)
+
+    def test_merge_rejects_invalid_seed_before_writing(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            batch, seed, output = root / "batch.jsonl", root / "seed.jsonl", root / "out.jsonl"
+            write_jsonl(batch, [record(2)])
+            write_jsonl(seed, [{"sense_id": "invalid", "meaning": "x"}])
+            with self.assertRaisesRegex(ValueError, "invalid seed.*invalid sense_id"):
+                merge_batches([batch], seed, {2}, output)
             self.assertFalse(output.exists())
 
 

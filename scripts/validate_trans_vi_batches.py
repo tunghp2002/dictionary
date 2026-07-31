@@ -24,8 +24,7 @@ def read_records(path: Path) -> list[tuple[int, dict[str, Any]]]:
     return records
 
 
-def validate_batch(path: Path, target_ids: set[int], require_descriptions: bool = True) -> list[str]:
-    """Return deterministic validation errors for a staged JSONL batch."""
+def _validate(path: Path, target_ids: set[int], require_descriptions: bool, reject_non_targets: bool) -> list[str]:
     errors: list[str] = []
     seen: set[int] = set()
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -47,7 +46,8 @@ def validate_batch(path: Path, target_ids: set[int], require_descriptions: bool 
             errors.append(f"line {line_number}: duplicate sense_id {sense_id}")
             continue
         seen.add(sense_id)
-        if sense_id not in target_ids:
+        is_target = sense_id in target_ids
+        if reject_non_targets and not is_target:
             errors.append(f"line {line_number}: non-target sense_id {sense_id}")
         if set(record) != TRANSLATION_FIELDS:
             errors.append(f"line {line_number}: invalid fields for sense_id {sense_id}")
@@ -57,14 +57,35 @@ def validate_batch(path: Path, target_ids: set[int], require_descriptions: bool 
         if not isinstance(meaning, str) or not isinstance(description, str):
             errors.append(f"line {line_number}: invalid text fields for sense_id {sense_id}")
             continue
-        if not meaning.strip():
-            errors.append(f"line {line_number}: empty meaning for sense_id {sense_id}")
-        elif len(meaning) > 35:
-            errors.append(f"line {line_number}: meaning exceeds 35 characters for sense_id {sense_id}")
-        elif has_cjk(meaning):
-            errors.append(f"line {line_number}: CJK text in meaning for sense_id {sense_id}")
-        if require_descriptions and not description.strip():
+        if is_target:
+            if not meaning.strip():
+                errors.append(f"line {line_number}: empty meaning for sense_id {sense_id}")
+            if len(meaning) > 35:
+                errors.append(f"line {line_number}: meaning exceeds 35 characters for sense_id {sense_id}")
+            if has_cjk(meaning):
+                errors.append(f"line {line_number}: CJK text in meaning for sense_id {sense_id}")
+        if is_target and require_descriptions and not description.strip():
             errors.append(f"line {line_number}: empty description for sense_id {sense_id}")
-        if not isinstance(record["examples"], list) or not isinstance(record["collocations"], list):
-            errors.append(f"line {line_number}: invalid list fields for sense_id {sense_id}")
+        examples = record["examples"]
+        if not isinstance(examples, list) or any(
+            not isinstance(example, dict)
+            or set(example) != {"en", "vi"}
+            or not isinstance(example["en"], str)
+            or not isinstance(example["vi"], str)
+            for example in examples
+        ):
+            errors.append(f"line {line_number}: invalid examples for sense_id {sense_id}")
+        collocations = record["collocations"]
+        if not isinstance(collocations, list) or not all(isinstance(item, str) for item in collocations):
+            errors.append(f"line {line_number}: invalid collocations for sense_id {sense_id}")
     return sorted(errors)
+
+
+def validate_batch(path: Path, target_ids: set[int], require_descriptions: bool = True) -> list[str]:
+    """Return deterministic validation errors for a staged JSONL batch."""
+    return _validate(path, target_ids, require_descriptions, reject_non_targets=True)
+
+
+def validate_seed(path: Path, target_ids: set[int]) -> list[str]:
+    """Validate seed schema while allowing non-target placeholder records."""
+    return _validate(path, target_ids, require_descriptions=True, reject_non_targets=False)
