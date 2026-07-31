@@ -3,7 +3,7 @@
   "title": "English to Vietnamese translation record",
   "type": "object",
   "additionalProperties": false,
-  "required": ["sense_id", "meaning", "examples", "collocations"],
+  "required": ["sense_id", "meaning", "description", "examples", "collocations"],
   "properties": {
     "sense_id": {
       "type": "integer",
@@ -11,6 +11,7 @@
       "maximum": 9007199254740991
     },
     "meaning": {"type": "string"},
+    "description": {"type": "string"},
     "examples": {
       "type": "array",
       "items": {

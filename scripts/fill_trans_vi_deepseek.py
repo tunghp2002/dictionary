@@ -107,6 +107,7 @@ def translation_record(sense_id: int, meaning: str, record: dict[str, Any] | Non
     return {
         "sense_id": sense_id,
         "meaning": meaning.strip(),
+        "description": record.get("description", ""),
         "examples": record.get("examples", []),
         "collocations": record.get("collocations", []),
     }

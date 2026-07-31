@@ -12,13 +12,14 @@
   "fields": [
     "sense_id",
     "meaning",
+    "description",
     "examples",
     "collocations"
   ],
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "c10eb6942b1f45e0138e1b756e73e421cca3e11c604d5e06bcc22052c86173df",
-    "bytes": 16263302
+    "sha256": "e3bccc1de447fb5ae67132fa146fc2e35559d5c1872e9a1f79d01ced622fc826",
+    "bytes": 19595624
   }
 }

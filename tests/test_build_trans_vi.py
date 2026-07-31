@@ -10,9 +10,25 @@ from scripts.build_trans_vi import (
     normalize_synset,
 )
 from scripts.build_core_en import file_sha256, load_id_registry
+from scripts.fill_trans_vi_deepseek import translation_record
 
 
 class BuildTransViTest(unittest.TestCase):
+    def test_translation_record_preserves_or_defaults_description(self):
+        fields = {"sense_id", "meaning", "description", "examples", "collocations"}
+        self.assertEqual(
+            translation_record(7, " nghĩa ", {"description": "Mô tả", "examples": [{"en": "e", "vi": "v"}]}),
+            {
+                "sense_id": 7,
+                "meaning": "nghĩa",
+                "description": "Mô tả",
+                "examples": [{"en": "e", "vi": "v"}],
+                "collocations": [],
+            },
+        )
+        self.assertEqual(set(translation_record(8, "nghĩa")), fields)
+        self.assertEqual(translation_record(8, "nghĩa")["description"], "")
+
     def test_normalizes_satellite_synsets(self):
         self.assertEqual(normalize_synset(1188475, "s"), "01188475-a")
 
@@ -49,13 +65,14 @@ class BuildTransViTest(unittest.TestCase):
         self.assertEqual(ids, sorted(ids))
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(set(ids) <= registry)
-        fields = {"sense_id", "meaning", "examples", "collocations"}
+        fields = {"sense_id", "meaning", "description", "examples", "collocations"}
         self.assertTrue(all(set(row) == fields for row in rows))
         filled = [row for row in rows if row["meaning"]]
         self.assertTrue(all(not has_cjk(row["meaning"]) for row in filled))
         self.assertTrue(
             all(
                 row["meaning"] == ""
+                and row["description"] == ""
                 and row["examples"] == []
                 and row["collocations"] == []
                 for row in rows
@@ -77,7 +94,7 @@ class BuildTransViTest(unittest.TestCase):
         self.assertEqual(metadata["core_senses"], len(registry))
         self.assertAlmostEqual(metadata["coverage"], len(filled) / len(registry))
         self.assertEqual(
-            metadata["fields"], ["sense_id", "meaning", "examples", "collocations"]
+            metadata["fields"], ["sense_id", "meaning", "description", "examples", "collocations"]
         )
         self.assertEqual(metadata["output"]["sha256"], file_sha256(data_path))
 

@@ -14,7 +14,8 @@ except ModuleNotFoundError:  # direct `python scripts/build_trans_vi_skeleton.py
     from build_core_en import file_sha256, load_id_registry, write_jsonl
 
 
-TRANSLATION_FIELDS = {"sense_id", "meaning", "examples", "collocations"}
+TRANSLATION_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
+LEGACY_TRANSLATION_FIELDS = TRANSLATION_FIELDS - {"description"}
 
 
 def load_seed(path: Path) -> dict[int, dict[str, Any]]:
@@ -24,10 +25,18 @@ def load_seed(path: Path) -> dict[int, dict[str, Any]]:
             if not line.strip():
                 continue
             record = json.loads(line)
-            if set(record) != TRANSLATION_FIELDS:
+            fields = set(record)
+            if fields not in (TRANSLATION_FIELDS, LEGACY_TRANSLATION_FIELDS):
                 raise ValueError(
-                    f"Invalid translation fields: {sorted(set(record) - TRANSLATION_FIELDS)}"
+                    f"Invalid translation fields: {sorted(fields - TRANSLATION_FIELDS)}"
                 )
+            record = {
+                "sense_id": record["sense_id"],
+                "meaning": record["meaning"],
+                "description": record.get("description", ""),
+                "examples": record["examples"],
+                "collocations": record["collocations"],
+            }
             sense_id = int(record["sense_id"])
             if sense_id in seed:
                 raise ValueError(f"Duplicate seed sense_id: {sense_id}")
@@ -56,6 +65,7 @@ def build(
                 {
                     "sense_id": sense_id,
                     "meaning": "",
+                    "description": "",
                     "examples": [],
                     "collocations": [],
                 },
@@ -73,7 +83,7 @@ def build(
         "placeholder_records": len(records) - len(seed),
         "core_senses": len(registry),
         "coverage": len(seed) / len(registry) if registry else 0,
-        "fields": ["sense_id", "meaning", "examples", "collocations"],
+        "fields": ["sense_id", "meaning", "description", "examples", "collocations"],
         "schema": "packs/en/trans-vi/schema.json",
         "output": {
             "path": output_path.as_posix(),
