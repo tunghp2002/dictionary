@@ -5,10 +5,10 @@
   "target_language": "vi",
   "source": "clean-ai-meaning-only",
   "records": 185129,
-  "filled_records": 8175,
-  "placeholder_records": 176954,
+  "filled_records": 8675,
+  "placeholder_records": 176454,
   "core_senses": 185129,
-  "coverage": 0.04415839765784939,
+  "coverage": 0.04685921708646403,
   "fields": [
     "sense_id",
     "meaning",
@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "cb109b9e0d45bfdf3ab754eae3d59f9bac675436f78f2ede4174e157ce2b2726",
-    "bytes": 16824039
+    "sha256": "0787d26218b8df14371d3261bad3677cc8c2ba3a7ce41b2eab27c31aa825438d",
+    "bytes": 16835856
   }
 }
