@@ -1,15 +1,14 @@
 {
-  "schema_version": 4,
+  "schema_version": 3,
   "key_path": "sense_id",
   "source_language": "en",
   "target_language": "vi",
-  "source": "clean-ai-interim",
-  "interim": true,
-  "records": 4675,
+  "source": "curated-seed-plus-skeleton",
+  "records": 185129,
   "filled_records": 4675,
-  "placeholder_records": 0,
-  "core_senses": 4675,
-  "coverage": 1.0,
+  "placeholder_records": 180454,
+  "core_senses": 185129,
+  "coverage": 0.025252661657546898,
   "fields": [
     "sense_id",
     "meaning",
@@ -18,10 +17,9 @@
     "collocations"
   ],
   "schema": "packs/en/trans-vi/schema.json",
-  "provenance": "AI-generated from clean OEWN word/pos/gloss queue; non-approved records removed for interim use.",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "18816c9d6d9c1ad50bf9fbad7a9d8bdafb64b05b6568ae43f771359e8c19e961",
-    "bytes": 1388059
+    "sha256": "0b1fd64ff2246ca524a407444e2d969a7cef92dff2c116db39c3c9de5c4e6f3d",
+    "bytes": 17628919
   }
 }
