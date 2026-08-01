@@ -1,9 +1,9 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "key_path": "sense_id",
   "source_language": "en",
   "target_language": "vi",
-  "source": "curated-seed-plus-skeleton",
+  "source": "clean-ai-meaning-only",
   "records": 185129,
   "filled_records": 4675,
   "placeholder_records": 180454,
@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "0b1fd64ff2246ca524a407444e2d969a7cef92dff2c116db39c3c9de5c4e6f3d",
-    "bytes": 17628919
+    "sha256": "a274e2c0f7a7236a679c821051eaf12fe56dbfe46ad30f127906a5cec7bdf791",
+    "bytes": 16732496
   }
 }
