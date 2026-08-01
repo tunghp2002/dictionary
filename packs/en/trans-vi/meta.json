@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "9ff3260b738d176242d3450fbce8d2dd0be708a2879e372a8cfb727b3e2cc21b",
-    "bytes": 16820714
+    "sha256": "cb109b9e0d45bfdf3ab754eae3d59f9bac675436f78f2ede4174e157ce2b2726",
+    "bytes": 16824039
   }
 }
