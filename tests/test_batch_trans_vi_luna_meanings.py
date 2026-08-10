@@ -270,6 +270,22 @@ class BatchLunaMeaningTest(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertEqual([json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()], [second])
 
+    def test_retry_queue_allows_no_recovered_files(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            source = root / "source.jsonl"
+            output = root / "retry.jsonl"
+            rows = [
+                {"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]},
+                {"sense_id": 2, "word": "quick", "pos": "adjective", "gloss": ["alive"]},
+            ]
+            source.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            result = main(["retry-queue", "--source", str(source), "--output", str(output)])
+
+            self.assertEqual(result, 2)
+            self.assertEqual([json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()], rows)
+
     def test_complete_coverage_rejects_missing_target_sense(self):
         with self.assertRaisesRegex(ValueError, "missing target sense_id 2"):
             require_complete_coverage([{"sense_id": 1, "meaning": "nhanh"}], {1, 2})

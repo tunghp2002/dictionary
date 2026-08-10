@@ -205,7 +205,7 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     )
 
 
-def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path]) -> list[dict[str, Any]]:
+def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path] | None = None) -> list[dict[str, Any]]:
     """Preserve source order while removing senses recovered by prior retry output."""
     source_rows: list[dict[str, Any]] = []
     source_ids: set[int] = set()
@@ -220,7 +220,7 @@ def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path]) -> l
             source_rows.append(row)
 
     accepted_ids: set[int] = set()
-    for path in accepted_paths:
+    for path in accepted_paths or []:
         for row in read_jsonl(path):
             if set(row) != {"sense_id", "meaning"}:
                 raise ValueError(f"{path}: expected meaning-only fields")
@@ -377,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
 
     retry_queue = subparsers.add_parser("retry-queue")
     retry_queue.add_argument("--source", action="append", type=Path, required=True)
-    retry_queue.add_argument("--accepted", action="append", type=Path, required=True)
+    retry_queue.add_argument("--accepted", action="append", type=Path)
     retry_queue.add_argument("--output", type=Path, required=True)
 
     args = parser.parse_args(argv)
