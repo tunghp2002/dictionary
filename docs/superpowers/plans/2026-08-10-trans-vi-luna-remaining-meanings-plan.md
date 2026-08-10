@@ -128,6 +128,7 @@ git commit -m "fix(trans-vi): allow initial retry queue"
 ### Task 3: Generate budgeted Batch shards
 
 **Files:**
+- Modify: `.gitignore`
 - Generate (ignored): `packs/en/trans-vi/review/luna-remaining/queue.jsonl`
 - Generate (ignored): `packs/en/trans-vi/review/luna-remaining/shard-001-input.jsonl` through `shard-016-input.jsonl`
 - Generate (ignored): matching `shard-XXX-batch.json` metadata files
@@ -137,6 +138,10 @@ git commit -m "fix(trans-vi): allow initial retry queue"
 - Produces: 16 independently resumable Batch shards: fifteen 8,000-sense shards and one 7,683-sense shard.
 
 - [ ] **Step 1: Build and verify the queue**
+
+Add `packs/en/trans-vi/review/luna-remaining/` to `.gitignore` before
+generating any Batch artifact, then commit the ignore rule with the Task 3
+checkpoint. Verify `git check-ignore` reports the staging directory.
 
 ```powershell
 python scripts/build_trans_vi_remaining_queue.py `
