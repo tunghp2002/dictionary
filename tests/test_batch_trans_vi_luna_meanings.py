@@ -26,6 +26,9 @@ class BatchLunaMeaningTest(unittest.TestCase):
         self.assertEqual(requests[0]["body"]["model"], "gpt-5.6-luna")
         self.assertTrue(requests[0]["body"]["text"]["format"]["strict"])
         self.assertIn('"sense_id":1', requests[0]["body"]["input"][-1]["content"][0]["text"])
+        self.assertIn('"place" → "nơi chốn"', requests[0]["body"]["input"][0]["content"][0]["text"])
+        self.assertIn("count Vietnamese words", requests[0]["body"]["input"][0]["content"][0]["text"])
+        self.assertEqual(requests[0]["body"]["reasoning"]["effort"], "low")
 
     def test_parse_output_rejects_fragment_and_unknown_id(self):
         output = self.write_output(
@@ -53,6 +56,30 @@ class BatchLunaMeaningTest(unittest.TestCase):
                 "meaning-000001: unknown sense_id 99",
                 "missing sense_id 1",
             ],
+        )
+
+    def test_parse_output_keeps_valid_sibling_when_one_translation_is_rejected(self):
+        output = self.write_output(
+            {
+                "custom_id": "meaning-000001",
+                "response": {
+                    "status_code": 200,
+                    "body": {
+                        "output_text": (
+                            '{"translations":[{"sense_id":1,"meaning":"nhanh"},'
+                            '{"sense_id":2,"meaning":"được thực hiện với ít"}]}'
+                        )
+                    },
+                },
+            }
+        )
+
+        rows, errors = parse_output(output, {1, 2})
+
+        self.assertEqual(rows, [{"sense_id": 1, "meaning": "nhanh"}])
+        self.assertEqual(
+            errors,
+            ["meaning-000001: likely fragment for sense_id 2", "missing sense_id 2"],
         )
 
     def test_prepare_limits_pilot_and_writes_batch_jsonl(self):
@@ -123,6 +150,56 @@ class BatchLunaMeaningTest(unittest.TestCase):
                 [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()],
                 [{"sense_id": 1, "meaning": "nhanh"}],
             )
+
+    def test_parse_command_writes_partial_result_and_retry_queue(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            queue = root / "queue.jsonl"
+            batch = root / "batch.jsonl"
+            output = root / "meanings.jsonl"
+            retry = root / "retry.jsonl"
+            source_rows = [
+                {"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]},
+                {"sense_id": 2, "word": "do it", "pos": "verb", "gloss": ["have sexual intercourse"]},
+            ]
+            queue.write_text("".join(json.dumps(row) + "\n" for row in source_rows), encoding="utf-8")
+            batch.write_text(
+                json.dumps(
+                    {
+                        "custom_id": "meaning-000001",
+                        "response": {
+                            "status_code": 200,
+                            "body": {
+                                "output_text": (
+                                    '{"translations":[{"sense_id":1,"meaning":"nhanh"},'
+                                    '{"sense_id":2,"meaning":"được thực hiện với ít"}]}'
+                                )
+                            },
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = main(
+                [
+                    "parse",
+                    "--batch",
+                    str(batch),
+                    "--queue",
+                    str(queue),
+                    "--output",
+                    str(output),
+                    "--allow-partial",
+                    "--retry-queue",
+                    str(retry),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual([json.loads(line)["sense_id"] for line in output.read_text(encoding="utf-8").splitlines()], [1])
+            self.assertEqual([json.loads(line)["sense_id"] for line in retry.read_text(encoding="utf-8").splitlines()], [2])
 
     def test_complete_coverage_rejects_missing_target_sense(self):
         with self.assertRaisesRegex(ValueError, "missing target sense_id 2"):

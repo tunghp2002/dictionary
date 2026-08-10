@@ -14,13 +14,17 @@ from urllib.request import Request, urlopen
 
 
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor.
-For each supplied English sense, write exactly one short, natural Vietnamese
-dictionary meaning. Use the word, part of speech, and gloss to choose the
-correct sense. Do not translate or abbreviate the English gloss word by word.
-Return a common Vietnamese word or phrase of one to five words, never an
-English description, sentence, or incomplete grammatical fragment. Prefer an
-idiomatic equivalent over a literal paraphrase of the gloss. A standard
-Vietnamese proper name may use six words when shortening it would be unclear."""
+Write the compact dictionary headword for each supplied English sense, not a
+translation or summary of its gloss. Use the word, part of speech, and gloss
+only to disambiguate the sense; then discard incidental definition detail.
+Return a natural common Vietnamese word or phrase, normally one to five words,
+never a sentence, explanation, or incomplete grammatical fragment. Prefer an
+idiomatic equivalent. Style examples: "place" → "nơi chốn", not "khu vực dành
+cho mục đích riêng"; "company man" → "người của công ty", not a sentence
+describing loyalty. Use a standard Vietnamese proper name when necessary; it
+may use six words if shortening it would be unclear. Before returning, silently
+count Vietnamese words and rewrite an overlong non-name into a shorter
+equivalent."""
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -81,7 +85,7 @@ def build_requests(rows: list[dict[str, Any]], model: str, group_size: int) -> l
                         },
                         "verbosity": "low",
                     },
-                    "reasoning": {"effort": "none"},
+                    "reasoning": {"effort": "low"},
                 },
             }
         )
@@ -159,7 +163,6 @@ def parse_output(path: Path, expected_ids: set[int]) -> tuple[list[dict[str, Any
             group[sense_id] = {"sense_id": sense_id, "meaning": translation["meaning"].strip()}
         if group_errors:
             errors.extend(group_errors)
-            continue
         accepted.update(group)
 
     missing = expected_ids - set(accepted)
@@ -335,6 +338,8 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--output", type=Path, required=True)
     parse.add_argument("--limit", type=int)
     parse.add_argument("--offset", type=int, default=0)
+    parse.add_argument("--allow-partial", action="store_true")
+    parse.add_argument("--retry-queue", type=Path)
 
     args = parser.parse_args(argv)
     if args.command == "prepare":
@@ -351,9 +356,17 @@ def main(argv: list[str] | None = None) -> int:
         print(download_output(args.metadata, args.output, args.env))
         return 0
     if args.command == "parse":
-        expected_ids = {int(row["sense_id"]) for row in read_jsonl(args.queue, args.limit, args.offset)}
+        source_rows = read_jsonl(args.queue, args.limit, args.offset)
+        expected_ids = {int(row["sense_id"]) for row in source_rows}
         rows, errors = parse_output(args.batch, expected_ids)
         if errors:
+            if args.allow_partial:
+                if args.retry_queue is None:
+                    raise ValueError("--retry-queue is required with --allow-partial")
+                write_jsonl(args.output, rows)
+                accepted_ids = {int(row["sense_id"]) for row in rows}
+                write_jsonl(args.retry_queue, [row for row in source_rows if int(row["sense_id"]) not in accepted_ids])
+                return len(rows)
             raise ValueError("; ".join(errors[:20]))
         require_complete_coverage(rows, expected_ids)
         write_jsonl(args.output, rows)
