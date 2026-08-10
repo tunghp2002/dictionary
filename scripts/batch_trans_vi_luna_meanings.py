@@ -19,7 +19,10 @@ translation or summary of its gloss. Use the word, part of speech, and gloss
 only to disambiguate the sense; then discard incidental definition detail.
 Return a natural common Vietnamese word or phrase, normally one to five words,
 never a sentence, explanation, or incomplete grammatical fragment. Prefer an
-idiomatic equivalent. Style examples: "place" → "nơi chốn", not "khu vực dành
+idiomatic equivalent. Every meaning must use at most 50 Vietnamese characters,
+including spaces; shorten long names to their standard Vietnamese form or
+acronym instead of explaining them. Every meaning must use at most twelve Vietnamese words.
+Style examples: "place" → "nơi chốn", not "khu vực dành
 cho mục đích riêng"; "company man" → "người của công ty", not a sentence
 describing loyalty. Use a standard Vietnamese proper name when necessary; it
 may use six words if shortening it would be unclear. Before returning, silently
@@ -97,10 +100,10 @@ def validate_meaning(value: Any) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return "empty meaning"
     meaning = value.strip()
-    if len(meaning) > 35:
-        return "meaning exceeds 35 characters"
-    if not 1 <= len(meaning.split()) <= 10:
-        return "meaning must contain 1 to 10 words"
+    if len(meaning) > 50:
+        return "meaning exceeds 50 characters"
+    if not 1 <= len(meaning.split()) <= 12:
+        return "meaning must contain 1 to 12 words"
     if any("\u4e00" <= char <= "\u9fff" for char in meaning):
         return "CJK text in meaning"
     if meaning.casefold() == "được thực hiện với ít":
@@ -202,6 +205,32 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     )
 
 
+def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path]) -> list[dict[str, Any]]:
+    """Preserve source order while removing senses recovered by prior retry output."""
+    source_rows: list[dict[str, Any]] = []
+    source_ids: set[int] = set()
+    for path in source_paths:
+        for row in read_jsonl(path):
+            if set(row) != {"sense_id", "word", "pos", "gloss"}:
+                raise ValueError(f"{path}: expected clean-queue fields")
+            sense_id = int(row["sense_id"])
+            if sense_id in source_ids:
+                raise ValueError(f"duplicate source sense_id {sense_id}")
+            source_ids.add(sense_id)
+            source_rows.append(row)
+
+    accepted_ids: set[int] = set()
+    for path in accepted_paths:
+        for row in read_jsonl(path):
+            if set(row) != {"sense_id", "meaning"}:
+                raise ValueError(f"{path}: expected meaning-only fields")
+            sense_id = int(row["sense_id"])
+            if sense_id not in source_ids:
+                raise ValueError(f"{path}: recovered unknown sense_id {sense_id}")
+            accepted_ids.add(sense_id)
+    return [row for row in source_rows if int(row["sense_id"]) not in accepted_ids]
+
+
 def load_api_key(env_path: Path = Path(".env")) -> str:
     """Load the API key without exporting or logging it."""
     if value := os.environ.get("OPENAI_API_KEY"):
@@ -296,9 +325,14 @@ def refresh_status(metadata_path: Path, env_path: Path) -> dict[str, Any]:
     return metadata
 
 
+def batch_has_downloadable_output(metadata: dict[str, Any]) -> bool:
+    """Return whether OpenAI exposed an output file, including cancelled partial jobs."""
+    return metadata.get("status") in {"completed", "cancelled"} and bool(metadata.get("output_file_id"))
+
+
 def download_output(metadata_path: Path, output_path: Path, env_path: Path) -> int:
     metadata = refresh_status(metadata_path, env_path)
-    if metadata["status"] != "completed" or not metadata.get("output_file_id"):
+    if not batch_has_downloadable_output(metadata):
         raise RuntimeError(f"Batch is {metadata['status']}; output is not ready")
     payload = api_request(f"/files/{metadata['output_file_id']}/content", "GET", load_api_key(env_path))
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -341,6 +375,11 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--allow-partial", action="store_true")
     parse.add_argument("--retry-queue", type=Path)
 
+    retry_queue = subparsers.add_parser("retry-queue")
+    retry_queue.add_argument("--source", action="append", type=Path, required=True)
+    retry_queue.add_argument("--accepted", action="append", type=Path, required=True)
+    retry_queue.add_argument("--output", type=Path, required=True)
+
     args = parser.parse_args(argv)
     if args.command == "prepare":
         requests = build_requests(read_jsonl(args.queue, args.limit, args.offset), args.model, args.group_size)
@@ -369,6 +408,10 @@ def main(argv: list[str] | None = None) -> int:
                 return len(rows)
             raise ValueError("; ".join(errors[:20]))
         require_complete_coverage(rows, expected_ids)
+        write_jsonl(args.output, rows)
+        return len(rows)
+    if args.command == "retry-queue":
+        rows = build_retry_queue(args.source, args.accepted)
         write_jsonl(args.output, rows)
         return len(rows)
     raise AssertionError(f"unsupported command {args.command}")

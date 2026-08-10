@@ -7,6 +7,11 @@ import argparse
 import json
 from pathlib import Path
 
+try:
+    from scripts.batch_trans_vi_luna_meanings import validate_meaning
+except ModuleNotFoundError:
+    from batch_trans_vi_luna_meanings import validate_meaning
+
 
 def merge_meanings(batch_paths: list[Path], data_path: Path) -> int:
     meanings: dict[int, str] = {}
@@ -19,7 +24,7 @@ def merge_meanings(batch_paths: list[Path], data_path: Path) -> int:
                 raise ValueError(f"{path}: expected sense_id/meaning only")
             sense_id = int(row["sense_id"])
             meaning = str(row["meaning"]).strip()
-            if not meaning or len(meaning.split()) > 5 or len(meaning) > 35:
+            if validate_meaning(meaning):
                 raise ValueError(f"{path}: invalid meaning for {sense_id}")
             if sense_id in meanings and meanings[sense_id] != meaning:
                 raise ValueError(f"conflicting meaning for {sense_id}")

@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.batch_trans_vi_luna_meanings import build_requests, main, parse_output, require_complete_coverage, validate_meaning
+from scripts.batch_trans_vi_luna_meanings import (
+    batch_has_downloadable_output,
+    build_requests,
+    main,
+    parse_output,
+    require_complete_coverage,
+    validate_meaning,
+)
 
 
 class BatchLunaMeaningTest(unittest.TestCase):
@@ -29,6 +36,20 @@ class BatchLunaMeaningTest(unittest.TestCase):
         self.assertIn('"place" → "nơi chốn"', requests[0]["body"]["input"][0]["content"][0]["text"])
         self.assertIn("count Vietnamese words", requests[0]["body"]["input"][0]["content"][0]["text"])
         self.assertEqual(requests[0]["body"]["reasoning"]["effort"], "low")
+
+    def test_build_requests_instructs_the_model_to_respect_fifty_character_limit(self):
+        rows = [{"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]}]
+
+        request = build_requests(rows, "gpt-5.6-luna", 1)[0]
+
+        self.assertIn("50 Vietnamese characters", request["body"]["input"][0]["content"][0]["text"])
+
+    def test_build_requests_instructs_the_model_to_respect_twelve_word_limit(self):
+        rows = [{"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]}]
+
+        request = build_requests(rows, "gpt-5.6-luna", 1)[0]
+
+        self.assertIn("at most twelve Vietnamese words", request["body"]["input"][0]["content"][0]["text"])
 
     def test_parse_output_rejects_fragment_and_unknown_id(self):
         output = self.write_output(
@@ -122,6 +143,20 @@ class BatchLunaMeaningTest(unittest.TestCase):
     def test_allows_compact_technical_term_with_eight_words(self):
         self.assertIsNone(validate_meaning("phần mềm quản lý thông tin cá nhân"))
 
+    def test_allows_compact_official_name_within_fifty_characters(self):
+        self.assertIsNone(validate_meaning("Viện Hàn lâm Khoa học và Nghệ thuật Điện ảnh"))
+
+    def test_allows_compact_eleven_word_official_name(self):
+        self.assertIsNone(validate_meaning("Bộ Tư lệnh Điều tra Hình sự Lục quân Hoa Kỳ"))
+
+    def test_cancelled_batch_with_output_file_is_downloadable(self):
+        self.assertTrue(
+            batch_has_downloadable_output(
+                {"status": "cancelled", "output_file_id": "file-partial"}
+            )
+        )
+        self.assertFalse(batch_has_downloadable_output({"status": "cancelled", "output_file_id": None}))
+
     def test_parse_command_writes_validated_meanings(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
@@ -203,6 +238,37 @@ class BatchLunaMeaningTest(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertEqual([json.loads(line)["sense_id"] for line in output.read_text(encoding="utf-8").splitlines()], [1])
             self.assertEqual([json.loads(line)["sense_id"] for line in retry.read_text(encoding="utf-8").splitlines()], [2])
+
+    def test_retry_queue_keeps_only_source_senses_not_recovered(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            source = root / "source.jsonl"
+            recovered = root / "recovered.jsonl"
+            output = root / "retry.jsonl"
+            second = {"sense_id": 2, "word": "quick", "pos": "adjective", "gloss": ["alive"]}
+            source.write_text(
+                json.dumps({"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]})
+                + "\n"
+                + json.dumps(second)
+                + "\n",
+                encoding="utf-8",
+            )
+            recovered.write_text(json.dumps({"sense_id": 1, "meaning": "nhanh"}) + "\n", encoding="utf-8")
+
+            result = main(
+                [
+                    "retry-queue",
+                    "--source",
+                    str(source),
+                    "--accepted",
+                    str(recovered),
+                    "--output",
+                    str(output),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual([json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()], [second])
 
     def test_complete_coverage_rejects_missing_target_sense(self):
         with self.assertRaisesRegex(ValueError, "missing target sense_id 2"):
