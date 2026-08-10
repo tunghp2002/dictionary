@@ -3,4 +3,5 @@
 __pycache__/
 *.pyc
 .env
+.worktrees/
 packs/en/trans-vi/review/queue.jsonl
