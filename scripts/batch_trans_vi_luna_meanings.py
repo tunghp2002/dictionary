@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import mimetypes
+import os
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor.
@@ -13,7 +18,9 @@ For each supplied English sense, write exactly one short, natural Vietnamese
 dictionary meaning. Use the word, part of speech, and gloss to choose the
 correct sense. Do not translate or abbreviate the English gloss word by word.
 Return a common Vietnamese word or phrase of one to five words, never an
-English description, sentence, or incomplete grammatical fragment."""
+English description, sentence, or incomplete grammatical fragment. Prefer an
+idiomatic equivalent over a literal paraphrase of the gloss. A standard
+Vietnamese proper name may use six words when shortening it would be unclear."""
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -31,6 +38,8 @@ RESPONSE_SCHEMA = {
     },
     "required": ["translations"],
 }
+
+API_ROOT = "https://api.openai.com/v1"
 
 
 def build_requests(rows: list[dict[str, Any]], model: str, group_size: int) -> list[dict[str, Any]]:
@@ -72,6 +81,7 @@ def build_requests(rows: list[dict[str, Any]], model: str, group_size: int) -> l
                         },
                         "verbosity": "low",
                     },
+                    "reasoning": {"effort": "none"},
                 },
             }
         )
@@ -85,8 +95,8 @@ def validate_meaning(value: Any) -> str | None:
     meaning = value.strip()
     if len(meaning) > 35:
         return "meaning exceeds 35 characters"
-    if not 1 <= len(meaning.split()) <= 5:
-        return "meaning must contain 1 to 5 words"
+    if not 1 <= len(meaning.split()) <= 6:
+        return "meaning must contain 1 to 6 words"
     if any("\u4e00" <= char <= "\u9fff" for char in meaning):
         return "CJK text in meaning"
     if meaning.casefold() == "được thực hiện với ít":
@@ -155,3 +165,201 @@ def parse_output(path: Path, expected_ids: set[int]) -> tuple[list[dict[str, Any
     missing = expected_ids - set(accepted)
     errors.extend(f"missing sense_id {sense_id}" for sense_id in sorted(missing))
     return [accepted[sense_id] for sense_id in sorted(accepted)], errors
+
+
+def require_complete_coverage(rows: list[dict[str, Any]], expected_ids: set[int]) -> None:
+    """Refuse an apply step unless every expected sense occurs exactly once."""
+    actual_ids: set[int] = set()
+    duplicates: set[int] = set()
+    for row in rows:
+        sense_id = int(row["sense_id"])
+        if sense_id in actual_ids:
+            duplicates.add(sense_id)
+        actual_ids.add(sense_id)
+    if duplicates:
+        raise ValueError(f"duplicate target sense_id {min(duplicates)}")
+    unknown = actual_ids - expected_ids
+    if unknown:
+        raise ValueError(f"unknown target sense_id {min(unknown)}")
+    missing = expected_ids - actual_ids
+    if missing:
+        raise ValueError(f"missing target sense_id {min(missing)}")
+
+
+def read_jsonl(path: Path, limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return rows[offset : None if limit is None else offset + limit]
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def load_api_key(env_path: Path = Path(".env")) -> str:
+    """Load the API key without exporting or logging it."""
+    if value := os.environ.get("OPENAI_API_KEY"):
+        return value
+    if not env_path.exists():
+        raise RuntimeError("OPENAI_API_KEY is missing: no environment variable or .env file")
+    for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if line.startswith("OPENAI_API_KEY="):
+            value = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if value:
+                return value
+    raise RuntimeError("OPENAI_API_KEY is missing from .env")
+
+
+def api_request(path: str, method: str, key: str, body: bytes | None = None, content_type: str | None = None) -> Any:
+    headers = {"Authorization": f"Bearer {key}"}
+    if content_type:
+        headers["Content-Type"] = content_type
+    request = Request(API_ROOT + path, data=body, method=method, headers=headers)
+    try:
+        with urlopen(request, timeout=120) as response:
+            content = response.read()
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI API {error.code}: {detail}") from error
+    return content
+
+
+def api_json(path: str, method: str, key: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    response = api_request(path, method, key, body, "application/json" if body is not None else None)
+    return json.loads(response)
+
+
+def multipart_file(path: Path) -> tuple[bytes, str]:
+    boundary = "----transViBatchBoundary"
+    filename = path.name.encode("utf-8")
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    chunks = [
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nbatch\r\n".encode(),
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"".encode() + filename
+        + f"\"\r\nContent-Type: {content_type}\r\n\r\n".encode(),
+        path.read_bytes(),
+        f"\r\n--{boundary}--\r\n".encode(),
+    ]
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def submit_batch(input_path: Path, metadata_path: Path, env_path: Path) -> dict[str, Any]:
+    key = load_api_key(env_path)
+    upload_body, content_type = multipart_file(input_path)
+    file_result = json.loads(api_request("/files", "POST", key, upload_body, content_type))
+    batch_result = api_json(
+        "/batches",
+        "POST",
+        key,
+        {
+            "input_file_id": file_result["id"],
+            "endpoint": "/v1/responses",
+            "completion_window": "24h",
+            "metadata": {"pipeline": "trans-vi-meaning"},
+        },
+    )
+    metadata = {
+        "batch_id": batch_result["id"],
+        "input_file_id": file_result["id"],
+        "status": batch_result["status"],
+        "request_count": sum(1 for line in input_path.read_text(encoding="utf-8").splitlines() if line.strip()),
+    }
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    return metadata
+
+
+def refresh_status(metadata_path: Path, env_path: Path) -> dict[str, Any]:
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    result = api_json(f"/batches/{metadata['batch_id']}", "GET", load_api_key(env_path))
+    metadata.update(
+        {
+            "status": result["status"],
+            "output_file_id": result.get("output_file_id"),
+            "error_file_id": result.get("error_file_id"),
+            "request_counts": result.get("request_counts"),
+        }
+    )
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    return metadata
+
+
+def download_output(metadata_path: Path, output_path: Path, env_path: Path) -> int:
+    metadata = refresh_status(metadata_path, env_path)
+    if metadata["status"] != "completed" or not metadata.get("output_file_id"):
+        raise RuntimeError(f"Batch is {metadata['status']}; output is not ready")
+    payload = api_request(f"/files/{metadata['output_file_id']}/content", "GET", load_api_key(env_path))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(payload)
+    return len(payload)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prepare = subparsers.add_parser("prepare")
+    prepare.add_argument("--queue", type=Path, required=True)
+    prepare.add_argument("--output", type=Path, required=True)
+    prepare.add_argument("--limit", type=int)
+    prepare.add_argument("--offset", type=int, default=0)
+    prepare.add_argument("--group-size", type=int, default=25)
+    prepare.add_argument("--model", default="gpt-5.6-luna")
+
+    submit = subparsers.add_parser("submit")
+    submit.add_argument("--input", type=Path, required=True)
+    submit.add_argument("--metadata", type=Path, required=True)
+    submit.add_argument("--env", type=Path, default=Path(".env"))
+
+    status = subparsers.add_parser("status")
+    status.add_argument("--metadata", type=Path, required=True)
+    status.add_argument("--env", type=Path, default=Path(".env"))
+
+    download = subparsers.add_parser("download")
+    download.add_argument("--metadata", type=Path, required=True)
+    download.add_argument("--output", type=Path, required=True)
+    download.add_argument("--env", type=Path, default=Path(".env"))
+
+    parse = subparsers.add_parser("parse")
+    parse.add_argument("--batch", type=Path, required=True)
+    parse.add_argument("--queue", type=Path, required=True)
+    parse.add_argument("--output", type=Path, required=True)
+    parse.add_argument("--limit", type=int)
+    parse.add_argument("--offset", type=int, default=0)
+
+    args = parser.parse_args(argv)
+    if args.command == "prepare":
+        requests = build_requests(read_jsonl(args.queue, args.limit, args.offset), args.model, args.group_size)
+        write_jsonl(args.output, requests)
+        return len(requests)
+    if args.command == "submit":
+        print(json.dumps(submit_batch(args.input, args.metadata, args.env), ensure_ascii=False))
+        return 0
+    if args.command == "status":
+        print(json.dumps(refresh_status(args.metadata, args.env), ensure_ascii=False))
+        return 0
+    if args.command == "download":
+        print(download_output(args.metadata, args.output, args.env))
+        return 0
+    if args.command == "parse":
+        expected_ids = {int(row["sense_id"]) for row in read_jsonl(args.queue, args.limit, args.offset)}
+        rows, errors = parse_output(args.batch, expected_ids)
+        if errors:
+            raise ValueError("; ".join(errors[:20]))
+        require_complete_coverage(rows, expected_ids)
+        write_jsonl(args.output, rows)
+        return len(rows)
+    raise AssertionError(f"unsupported command {args.command}")
+
+
+if __name__ == "__main__":
+    print(main())

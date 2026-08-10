@@ -13,7 +13,7 @@
 - Use model ID `gpt-5.6-luna` verified through the account Models API.
 - Read `OPENAI_API_KEY` from `.env` at runtime; never print it or commit it.
 - Translate from only `sense_id`, `word`, `pos`, and OEWN `gloss`; do not use legacy Vietnamese data.
-- Meanings must be natural Vietnamese, 1–5 words, at most 35 characters, and must not be truncated gloss fragments.
+- Meanings must be natural Vietnamese, normally 1–5 words (six-word standard proper names allowed), at most 35 characters, and must not be truncated gloss fragments.
 - Preserve every canonical `sense_id`; only `meaning` may change. Keep `description`, `examples`, and `collocations` empty.
 - Store generated inputs/outputs under ignored `packs/en/trans-vi/review/` paths. Do not merge data before validation and pilot review.
 

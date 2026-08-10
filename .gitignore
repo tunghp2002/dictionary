@@ -5,3 +5,4 @@ __pycache__/
 .env
 .worktrees/
 packs/en/trans-vi/review/queue.jsonl
+packs/en/trans-vi/review/luna-meaning/

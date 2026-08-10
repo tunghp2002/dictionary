@@ -21,7 +21,9 @@ off the gloss.
 2. Submit a 500-sense pilot Batch, grouped into 25-sense requests to reduce
    prompt repetition while keeping responses auditable.
 3. Parse and reject malformed, unknown, duplicate, empty, overlong,
-   non-Vietnamese, or likely-fragment meanings. Spot-check accepted pilot
+  non-Vietnamese, or likely-fragment meanings. Meanings normally use one to
+  five words; standard six-word Vietnamese proper names are accepted.
+  Spot-check accepted pilot
    entries, especially multi-sense and phrase entries.
 4. If the pilot passes, submit the remaining senses in one Batch using the
    same prompt and validation.

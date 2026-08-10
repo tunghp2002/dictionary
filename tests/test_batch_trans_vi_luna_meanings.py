@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.batch_trans_vi_luna_meanings import build_requests, parse_output
+from scripts.batch_trans_vi_luna_meanings import build_requests, main, parse_output, require_complete_coverage, validate_meaning
 
 
 class BatchLunaMeaningTest(unittest.TestCase):
@@ -54,6 +54,79 @@ class BatchLunaMeaningTest(unittest.TestCase):
                 "missing sense_id 1",
             ],
         )
+
+    def test_prepare_limits_pilot_and_writes_batch_jsonl(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            queue = root / "queue.jsonl"
+            output = root / "pilot-input.jsonl"
+            queue.write_text(
+                "".join(
+                    json.dumps(
+                        {"sense_id": sense_id, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                    for sense_id in (1, 2, 3, 4)
+                ),
+                encoding="utf-8",
+            )
+
+            result = main(
+                [
+                    "prepare",
+                    "--queue",
+                    str(queue),
+                    "--output",
+                    str(output),
+                    "--limit",
+                    "3",
+                    "--group-size",
+                    "2",
+                ]
+            )
+
+            self.assertEqual(result, 2)
+            self.assertEqual(len(output.read_text(encoding="utf-8").splitlines()), 2)
+
+    def test_allows_standard_six_word_proper_name(self):
+        self.assertIsNone(validate_meaning("Tổ chức Y tế Thế giới"))
+
+    def test_parse_command_writes_validated_meanings(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            queue = root / "queue.jsonl"
+            batch = root / "batch.jsonl"
+            output = root / "meanings.jsonl"
+            queue.write_text(
+                json.dumps({"sense_id": 1, "word": "quick", "pos": "adjective", "gloss": ["moving fast"]}) + "\n",
+                encoding="utf-8",
+            )
+            batch.write_text(
+                json.dumps(
+                    {
+                        "custom_id": "meaning-000001",
+                        "response": {
+                            "status_code": 200,
+                            "body": {"output_text": '{"translations":[{"sense_id":1,"meaning":"nhanh"}]}'},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = main(["parse", "--batch", str(batch), "--queue", str(queue), "--output", str(output)])
+
+            self.assertEqual(result, 1)
+            self.assertEqual(
+                [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()],
+                [{"sense_id": 1, "meaning": "nhanh"}],
+            )
+
+    def test_complete_coverage_rejects_missing_target_sense(self):
+        with self.assertRaisesRegex(ValueError, "missing target sense_id 2"):
+            require_complete_coverage([{"sense_id": 1, "meaning": "nhanh"}], {1, 2})
 
 
 if __name__ == "__main__":
