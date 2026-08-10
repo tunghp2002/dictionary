@@ -119,6 +119,9 @@ class BatchLunaMeaningTest(unittest.TestCase):
     def test_allows_standard_six_word_proper_name(self):
         self.assertIsNone(validate_meaning("Tổ chức Y tế Thế giới"))
 
+    def test_allows_compact_technical_term_with_eight_words(self):
+        self.assertIsNone(validate_meaning("phần mềm quản lý thông tin cá nhân"))
+
     def test_parse_command_writes_validated_meanings(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

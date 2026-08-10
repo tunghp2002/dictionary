@@ -99,8 +99,8 @@ def validate_meaning(value: Any) -> str | None:
     meaning = value.strip()
     if len(meaning) > 35:
         return "meaning exceeds 35 characters"
-    if not 1 <= len(meaning.split()) <= 6:
-        return "meaning must contain 1 to 6 words"
+    if not 1 <= len(meaning.split()) <= 10:
+        return "meaning must contain 1 to 10 words"
     if any("\u4e00" <= char <= "\u9fff" for char in meaning):
         return "CJK text in meaning"
     if meaning.casefold() == "được thực hiện với ít":
