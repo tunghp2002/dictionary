@@ -22,6 +22,15 @@ QUEUE_FIELDS = {
     "source_key", "word", "pos", "category", "priority", "description_hint", "usage_hint", "sense_id"
 }
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
+VIETNAMESE_MARKS = "ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+VIETNAMESE_ASCII_HEADWORDS = {"cho", "hay"}
+ENGLISH_MEANING_WORDS = {"a", "an", "and", "article", "for", "from", "in", "is", "of", "or", "the", "to", "with"}
+GRAMMAR_WORDS = {
+    "adjective", "adverb", "adverbial", "article", "auxiliary", "clause", "conjunction",
+    "contraction", "determiner", "form", "interrogative", "modal", "negator", "noun",
+    "object", "particle", "possessive", "preposition", "pronoun", "quantifier", "relative",
+    "subject", "verb",
+}
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
 For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases. Preserve sense_id exactly. Do not add fields."""
 RESPONSE_SCHEMA = {
@@ -72,15 +81,30 @@ def validate_rich_row(row: Any) -> str | None:
         return "invalid sense_id"
     if not isinstance(row["meaning"], str) or not row["meaning"].strip():
         return "empty meaning"
+    meaning = row["meaning"].strip()
+    words = meaning.split()
+    if (
+        len(meaning) > 50 or not 1 <= len(words) <= 12 or any("\u4e00" <= char <= "\u9fff" for char in meaning)
+        or meaning[-1] in ".!?" or any(word.casefold().strip(",;:") in ENGLISH_MEANING_WORDS for word in words)
+        or (not any(char.casefold() in VIETNAMESE_MARKS for char in meaning) and meaning.casefold() not in VIETNAMESE_ASCII_HEADWORDS)
+    ):
+        return "meaning must be concise Vietnamese headword"
     description = row["description"]
+    description_words = description[:-1].casefold().replace("-", " ").split() if isinstance(description, str) else []
     if not isinstance(description, str) or not description.strip() or not description[0].isupper() or description[-1] not in ".!?":
         return "description must be capitalized English sentence"
+    if not description.isascii() or not any(word.strip(".,;:()'") in GRAMMAR_WORDS for word in description_words):
+        return "description must be English grammatical explanation"
     examples = row["examples"]
     if not isinstance(examples, list) or len(examples) != 1 or not isinstance(examples[0], dict) or set(examples[0]) != {"en", "vi"} or not all(isinstance(examples[0][key], str) and examples[0][key].strip() for key in ("en", "vi")):
         return "expected one bilingual example"
     collocations = row["collocations"]
     if not isinstance(collocations, list) or not 1 <= len(collocations) <= 3 or not all(isinstance(value, str) and value.strip() for value in collocations):
         return "expected one to three collocations"
+    if not all(value.isascii() for value in collocations):
+        return "collocations must be natural phrases"
+    if any(len(value.strip()) < 3 or len(value.split()) < 2 for value in collocations):
+        return "collocations must be natural phrases"
     return None
 
 

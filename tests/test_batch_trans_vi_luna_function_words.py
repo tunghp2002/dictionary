@@ -63,6 +63,32 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
         self.assertEqual(validate_rich_row({**valid_row(), "description": "lowercase explanation"}), "description must be capitalized English sentence")
         self.assertEqual(validate_rich_row({**valid_row(), "collocations": []}), "expected one to three collocations")
 
+    def test_rich_row_rejects_english_or_sentence_like_meanings(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "meaning": "the article"}),
+            "meaning must be concise Vietnamese headword",
+        )
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "meaning": "dùng trước danh từ xác định."}),
+            "meaning must be concise Vietnamese headword",
+        )
+
+    def test_rich_row_rejects_non_english_or_non_grammatical_descriptions(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "description": "Đây là mô tả ngắn."}),
+            "description must be English grammatical explanation",
+        )
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "description": "A pleasant word."}),
+            "description must be English grammatical explanation",
+        )
+
+    def test_rich_row_rejects_non_phrase_collocations(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "collocations": ["x"]}),
+            "collocations must be natural phrases",
+        )
+
     def test_parse_output_preserves_valid_sibling_and_marks_only_invalid_id_missing(self):
         output = self.write_output({
             "custom_id": "function-word-000001",
