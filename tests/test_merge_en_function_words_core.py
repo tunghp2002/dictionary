@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from scripts.build_core_en import load_id_registry
@@ -101,14 +102,31 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
         schema = json.loads((root / "packs/en/core/schema.json").read_text(encoding="utf-8"))
         allowed = set(schema["$defs"]["sense"]["properties"]["pos"]["enum"])
         registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
-        emitted = {
-            sense["id"]: sense["pos"]
-            for record in read_jsonl(root / "packs/en/core/data.jsonl")
-            for sense in record["senses"]
+        expected = {
+            registry[row["source_key"]]: row["category"]
+            for row in read_jsonl(root / "packs/en/core/function-words.jsonl")
         }
-        for row in read_jsonl(root / "packs/en/core/function-words.jsonl"):
-            self.assertEqual(emitted[registry[row["source_key"]]], row["category"])
-            self.assertIn(row["category"], allowed)
+        self.assertEqual(len(expected), 143)
+        occurrences = Counter()
+        for record in read_jsonl(root / "packs/en/core/data.jsonl"):
+            for sense in record["senses"]:
+                if sense["id"] not in expected:
+                    continue
+                occurrences[sense["id"]] += 1
+                self.assertEqual(sense["pos"], expected[sense["id"]])
+        self.assertEqual(set(occurrences), set(expected))
+        self.assertTrue(all(count == 1 for count in occurrences.values()))
+        self.assertTrue(all(category in allowed for category in expected.values()))
+
+    def test_checked_in_metadata_summary_matches_artifacts(self):
+        root = Path(__file__).parents[1]
+        metadata = json.loads((root / "packs/en/core/meta.json").read_text(encoding="utf-8"))
+        records = read_jsonl(root / "packs/en/core/data.jsonl")
+
+        self.assertEqual(metadata["records"], len(records))
+        self.assertEqual(metadata["senses"], sum(len(record["senses"]) for record in records))
+        self.assertEqual(metadata["reserved_sense_ids"], len(load_id_registry(root / "packs/en/core/sense-ids.tsv")))
+        self.assertEqual(metadata["with_frequency"], sum("frequency" in record for record in records))
 
 
 if __name__ == "__main__":
