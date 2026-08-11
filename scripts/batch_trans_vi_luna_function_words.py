@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -23,16 +24,8 @@ QUEUE_FIELDS = {
     "source_key", "word", "pos", "category", "priority", "description_hint", "usage_hint", "sense_id"
 }
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
-VIETNAMESE_MARKS = "ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
-VIETNAMESE_FUNCTION_HEADWORDS = {
-    "ai", "ai đó", "bạn", "bất kỳ", "bị", "bởi", "cả", "các", "cái gì", "cho", "chỉ", "chưa",
-    "chẳng", "có", "có thể", "của", "dù", "do", "đã", "đang", "để", "đến", "đó", "được", "đủ",
-    "giữa", "hầu như", "hay", "họ", "ít", "khi", "không", "là", "mà", "mỗi", "mọi", "mọi người",
-    "một", "muốn", "này", "nên", "nhiều", "nhưng", "nó", "nếu", "ở", "phải", "qua", "rất", "sau",
-    "sẽ", "số", "thì", "thậm chí", "trên", "trong", "trước", "từ", "tôi", "và", "vài", "về", "vì",
-    "với", "xuống", "dưới", "anh ấy", "cô ấy", "chúng ta", "chúng tôi",
-}
-ENGLISH_MEANING_WORDS = {"a", "an", "and", "article", "for", "from", "in", "is", "of", "or", "the", "to", "with"}
+MEANING_SEPARATORS = set(" ,;/-")
+ASCII_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
 GRAMMAR_WORDS = {
     "adjective", "adverb", "adverbial", "article", "auxiliary", "clause", "conjunction",
     "contraction", "determiner", "form", "interrogative", "modal", "negator", "noun",
@@ -47,7 +40,7 @@ CATEGORY_DESCRIPTION_TERMS = {
     "discourse_adverb": {"adverb", "discourse"}, "contraction": {"contraction"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
-For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases. Preserve sense_id exactly. Do not add fields."""
+For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
 RESPONSE_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {"translations": {"type": "array", "items": {
@@ -89,6 +82,13 @@ def schema_required_fields(request: dict[str, Any]) -> list[str]:
     return request["body"]["text"]["format"]["schema"]["properties"]["translations"]["items"]["required"]
 
 
+def _has_non_garbage_context(tokens: list[str]) -> bool:
+    letters = [token.replace("'", "") for token in tokens]
+    return bool(letters) and not any(
+        len(token) > 1 and len(set(token)) == 1 for token in letters
+    )
+
+
 def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | None:
     if not isinstance(row, dict) or set(row) != RICH_FIELDS:
         return "invalid rich row fields"
@@ -96,17 +96,17 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
         return "invalid sense_id"
     if not isinstance(row["meaning"], str) or not row["meaning"].strip():
         return "empty meaning"
-    meaning = row["meaning"].strip()
-    words = meaning.split()
+    meaning = unicodedata.normalize("NFC", row["meaning"].strip()).casefold()
+    words = re.findall(r"[^\W\d_]+", meaning)
     if (
-        len(meaning) > 50 or not 1 <= len(words) <= 12 or any("\u4e00" <= char <= "\u9fff" for char in meaning)
+        len(meaning) > 50 or not 1 <= len(words) <= 12
         or meaning[-1] in ".!?"
-        or any(word.casefold().strip(",;:") in ENGLISH_MEANING_WORDS for word in words)
-        or (not any(char in "ăâđêôơư" for char in meaning.casefold()) and meaning.casefold() not in VIETNAMESE_FUNCTION_HEADWORDS)
+        or any((not char.isalpha() or "LATIN" not in unicodedata.name(char, "")) and char not in MEANING_SEPARATORS for char in meaning)
+        or any(not set(unicodedata.normalize("NFD", word)) & set("aeiouy") for word in words)
     ):
         return "meaning must be concise Vietnamese headword"
     description = row["description"]
-    description_words = description[:-1].casefold().replace("-", " ").split() if isinstance(description, str) else []
+    description_words = ASCII_WORD_RE.findall(description.casefold()) if isinstance(description, str) else []
     if not isinstance(description, str) or not description.strip() or not description[0].isupper() or description[-1] not in ".!?":
         return "description must be capitalized English sentence"
     if not description.isascii() or len(description_words) < 3 or not any(word.strip(".,;:()'") in GRAMMAR_WORDS for word in description_words):
@@ -115,19 +115,31 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
         category = source.get("category")
         if category not in CATEGORY_DESCRIPTION_TERMS or not any(word.strip(".,;:()'") in CATEGORY_DESCRIPTION_TERMS[category] for word in description_words):
             return "description must match source grammatical category"
+        if len(description_words) < 4:
+            return "description must be sufficiently explanatory"
     examples = row["examples"]
     if not isinstance(examples, list) or len(examples) != 1 or not isinstance(examples[0], dict) or set(examples[0]) != {"en", "vi"} or not all(isinstance(examples[0][key], str) and examples[0][key].strip() for key in ("en", "vi")):
         return "expected one bilingual example"
     collocations = row["collocations"]
     if not isinstance(collocations, list) or not 1 <= len(collocations) <= 3 or not all(isinstance(value, str) and value.strip() for value in collocations):
         return "expected one to three collocations"
-    if not all(value.isascii() for value in collocations):
+    if not all(value.isascii() and len(ASCII_WORD_RE.findall(value.casefold())) >= 2 for value in collocations):
         return "collocations must be natural phrases"
     if source is not None:
         form = str(source.get("word", "")).casefold().replace("’", "'")
-        if not form or any(not re.search(rf"(?<![a-z]){re.escape(form)}(?![a-z])", value.casefold().replace("’", "'")) for value in collocations):
+        matches = [re.search(rf"(?<![a-z]){re.escape(form)}(?![a-z])", value.casefold().replace("’", "'")) for value in collocations]
+        if not form or any(match is None for match in matches):
             return "collocations must include source form"
-    if any(len(value.strip()) < 3 or len(value.split()) < 2 or any(not any(letter in "aeiouy" for letter in token.casefold()) for token in value.split()) for value in collocations):
+        for value, match in zip(collocations, matches):
+            assert match is not None
+            context = ASCII_WORD_RE.findall((value[:match.start()] + " " + value[match.end():]).casefold())
+            if not _has_non_garbage_context(context):
+                return "collocations must include usable context"
+    if any(
+        len(value.strip()) < 3
+        or not _has_non_garbage_context(ASCII_WORD_RE.findall(value.casefold()))
+        for value in collocations
+    ):
         return "collocations must be natural phrases"
     return None
 
