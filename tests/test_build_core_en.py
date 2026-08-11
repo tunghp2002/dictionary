@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import json
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -21,6 +22,20 @@ from scripts.build_core_en import (
 
 
 class BuildCoreEnTest(unittest.TestCase):
+    def test_core_data_is_configured_for_lf_checkout(self):
+        root = Path(__file__).parents[1]
+        result = subprocess.run(
+            ["git", "check-attr", "eol", "--", "packs/en/core/data.jsonl"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(
+            result.stdout.strip(),
+            "packs/en/core/data.jsonl: eol: lf",
+        )
+
     def test_builds_schema_with_stable_safe_integer_ids(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
