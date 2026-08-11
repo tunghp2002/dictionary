@@ -1,10 +1,11 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.append_en_function_words_expansion import append_expansion
-from scripts.build_en_function_words import load_function_words
+from scripts.build_en_function_words import build_function_word_queue, load_function_words
 
 
 ROOT = Path(__file__).parents[1]
@@ -65,3 +66,49 @@ class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
             target.write_text("", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "approved inventory"):
                 append_expansion(target, altered)
+
+    def test_no_one_uses_only_the_approved_hyphenated_key_exception(self):
+        rows = load_function_words(EXPANSION)
+        no_one = next(row for row in rows if (row["word"], row["category"]) == ("no-one", "pronoun"))
+        self.assertEqual("supplement:function:no-one:pronoun:hyphenated", no_one["source_key"])
+
+    def test_exactly_the_eight_informal_rows_are_priority_six_and_tagged(self):
+        rows = load_function_words(EXPANSION)
+        informal = {row["word"] for row in rows if row.get("register") == "informal"}
+        self.assertEqual({"ain't", "gonna", "wanna", "gotta", "kinda", "sorta", "lemme", "dunno"}, informal)
+        self.assertTrue(all(row["priority"] == 6 for row in rows if row["word"] in informal))
+        self.assertTrue(all(row["priority"] != 6 and "register" not in row for row in rows if row["word"] not in informal))
+
+    def test_rejects_a_nonexception_source_key(self):
+        with tempfile.TemporaryDirectory() as name:
+            altered = Path(name) / "expansion.jsonl"
+            altered.write_text(EXPANSION.read_text(encoding="utf-8").replace('"source_key":"supplement:function:am:auxiliary"', '"source_key":"supplement:function:wrong:auxiliary"', 1), encoding="utf-8")
+            (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source_key"):
+                append_expansion(Path(name) / "source.jsonl", altered)
+
+    def test_rejects_reused_generic_hints(self):
+        with tempfile.TemporaryDirectory() as name:
+            altered = Path(name) / "expansion.jsonl"
+            rows = [json.loads(line) for line in EXPANSION.read_text(encoding="utf-8").splitlines()]
+            rows[1]["description_hint"] = rows[0]["description_hint"]
+            rows[1]["usage_hint"] = rows[0]["usage_hint"]
+            altered.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "reused hint"):
+                append_expansion(Path(name) / "source.jsonl", altered)
+
+    def test_preserves_every_historical_mapping_and_appends_contiguous_ids(self):
+        historical = subprocess.run(["git", "show", "9add374:packs/en/core/function-words.jsonl"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        registry = subprocess.run(["git", "show", "9add374:packs/en/core/sense-ids.tsv"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name); table = root / "table.jsonl"; ids = root / "ids.tsv"
+            table.write_text(historical, encoding="utf-8"); ids.write_text(registry, encoding="utf-8")
+            old = ids.read_bytes()
+            self.assertEqual(184, append_expansion(table, EXPANSION))
+            _, assigned = build_function_word_queue(table, ids)
+            old_map = {line.split("\t", 1)[1] for line in old.decode().splitlines()[1:]}
+            self.assertEqual({line.split("\t", 1)[1] for line in old.decode().splitlines()[1:]}, {key for key in assigned if key in old_map})
+            new_ids = sorted(value for key, value in assigned.items() if key not in old_map)
+            self.assertEqual(184, len(new_ids))
+            self.assertEqual(list(range(new_ids[0], new_ids[-1] + 1)), new_ids)

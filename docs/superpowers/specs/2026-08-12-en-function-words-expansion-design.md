@@ -18,6 +18,8 @@ The function-word loader accepts the existing seven-field rows and the eight-fie
 
 The core schema already permits `adv` and `tags.register: informal`; no existing core record changes except frequency priority and appended supplemental senses. IDs are append-only registry entries. New records stay sorted by `(word.casefold(), word)`; existing records use the lowest numeric priority of all linked function senses.
 
+The historical `no one` mapping `supplement:function:no-one:pronoun` is immutable. The new hyphenated `no-one` pronoun is the sole source-key exception and uses `supplement:function:no-one:pronoun:hyphenated`; every other expansion row uses `supplement:function:<word.casefold()>:<category>`.
+
 ## Exact 184-sense inventory
 
 Each semicolon-separated item below is one new row, except an item repeated in different category sections intentionally receives one sense per grammatical role.

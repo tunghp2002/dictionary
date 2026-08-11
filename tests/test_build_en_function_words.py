@@ -28,7 +28,7 @@ class BuildEnFunctionWordsTest(unittest.TestCase):
     def test_accepts_legacy_rows_and_tagged_informal_apostrophe_free_contraction(self):
         with tempfile.TemporaryDirectory() as temp_name:
             table_path = Path(temp_name) / "table.jsonl"
-            tagged = row("supplement:function:gonna:modal", "gonna", category="modal")
+            tagged = row("supplement:function:lemme:contraction", "lemme", category="contraction")
             tagged["register"] = "informal"
             write_table(table_path, [row("supplement:function:i:pronoun", "I"), tagged])
             self.assertEqual(2, len(load_function_words(table_path)))
