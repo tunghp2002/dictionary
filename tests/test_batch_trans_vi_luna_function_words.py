@@ -210,14 +210,14 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
     def test_parse_accepts_valid_contraction_with_source_context(self):
         source = {
             **queue_row(1),
-            "source_key": "supplement:function:can-not:contraction",
-            "word": "can't",
+            "source_key": "supplement:function:will-not:contraction",
+            "word": "won't",
             "category": "contraction",
             "pos": "contraction",
-            "description_hint": "Contract cannot.",
+            "description_hint": "Contract will not.",
             "usage_hint": "Use in informal speech and writing.",
         }
-        row = {**valid_row(), "meaning": "không thể", "description": "Contraction of cannot used for the negative modal form.", "examples": [{"en": "I can't wait.", "vi": "Tôi không thể chờ."}], "collocations": ["can't wait", "can't help"]}
+        row = {**valid_row(), "meaning": "sẽ không", "description": "Contraction of “will not” — a negative modal form.", "examples": [{"en": "I won't wait.", "vi": "Tôi sẽ không chờ."}], "collocations": ["won't wait", "won't help"]}
 
         rows, errors = self.parse_one_with_source(row, source)
 

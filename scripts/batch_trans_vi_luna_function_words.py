@@ -26,6 +26,7 @@ QUEUE_FIELDS = {
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
 MEANING_SEPARATORS = set(" ,;/-")
 ASCII_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
+ENGLISH_TYPOGRAPHY = set("‘’“”–—…")
 GRAMMAR_WORDS = {
     "adjective", "adverb", "adverbial", "article", "auxiliary", "clause", "conjunction",
     "contraction", "determiner", "form", "interrogative", "modal", "negator", "noun",
@@ -105,11 +106,11 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
         or any(not set(unicodedata.normalize("NFD", word)) & set("aeiouy") for word in words)
     ):
         return "meaning must be concise Vietnamese headword"
-    description = row["description"]
-    description_words = ASCII_WORD_RE.findall(description.casefold()) if isinstance(description, str) else []
+    description = unicodedata.normalize("NFKC", row["description"]) if isinstance(row["description"], str) else ""
+    description_words = ASCII_WORD_RE.findall(description.casefold())
     if not isinstance(description, str) or not description.strip() or not description[0].isupper() or description[-1] not in ".!?":
         return "description must be capitalized English sentence"
-    if not description.isascii() or len(description_words) < 3 or not any(word.strip(".,;:()'") in GRAMMAR_WORDS for word in description_words):
+    if not all(char.isascii() or char in ENGLISH_TYPOGRAPHY for char in description) or len(description_words) < 3 or not any(word.strip(".,;:()'") in GRAMMAR_WORDS for word in description_words):
         return "description must be English grammatical explanation"
     if source is not None:
         category = source.get("category")
