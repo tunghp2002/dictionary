@@ -26,8 +26,9 @@ REQUIRED_FIELDS = {
 ALLOWED_CATEGORIES = {
     "pronoun", "article", "determiner", "quantifier", "distributive",
     "preposition", "conjunction", "auxiliary", "modal", "negator",
-    "particle", "discourse_adverb", "contraction",
+    "particle", "discourse_adverb", "contraction", "adv",
 }
+OPTIONAL_FIELDS = {"register"}
 
 
 def load_function_words(path: Path) -> list[dict[str, Any]]:
@@ -40,7 +41,7 @@ def load_function_words(path: Path) -> list[dict[str, Any]]:
             row = json.loads(line)
         except json.JSONDecodeError as error:
             raise ValueError(f"invalid JSON on line {line_number}") from error
-        if not isinstance(row, dict) or set(row) != REQUIRED_FIELDS:
+        if not isinstance(row, dict) or not REQUIRED_FIELDS <= set(row) <= REQUIRED_FIELDS | OPTIONAL_FIELDS:
             raise ValueError(f"invalid fields on line {line_number}")
         if not all(isinstance(row[field], str) and row[field].strip() for field in REQUIRED_FIELDS - {"priority"}):
             raise ValueError(f"blank required field on line {line_number}")
@@ -53,7 +54,9 @@ def load_function_words(path: Path) -> list[dict[str, Any]]:
             raise ValueError(f"invalid source_key: {source_key}")
         if row["category"] not in ALLOWED_CATEGORIES:
             raise ValueError(f"prohibited category: {row['category']}")
-        if row["category"] == "contraction" and "'" not in row["word"]:
+        if "register" in row and row["register"] != "informal":
+            raise ValueError(f"invalid register: {row['register']}")
+        if row["category"] == "contraction" and "'" not in row["word"] and row.get("register") != "informal":
             raise ValueError(f"invalid contraction spelling: {row['word']}")
         source_keys.add(source_key)
         rows.append(row)
