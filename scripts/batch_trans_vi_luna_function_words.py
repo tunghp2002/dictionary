@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,14 +24,27 @@ QUEUE_FIELDS = {
 }
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
 VIETNAMESE_MARKS = "ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
-VIETNAMESE_ASCII_HEADWORDS = {"cho", "hay"}
+VIETNAMESE_FUNCTION_HEADWORDS = {
+    "ai", "ai đó", "bạn", "bất kỳ", "bị", "bởi", "cả", "các", "cái gì", "cho", "chỉ", "chưa",
+    "chẳng", "có", "có thể", "của", "dù", "do", "đã", "đang", "để", "đến", "đó", "được", "đủ",
+    "giữa", "hầu như", "hay", "họ", "ít", "khi", "không", "là", "mà", "mỗi", "mọi", "mọi người",
+    "một", "muốn", "này", "nên", "nhiều", "nhưng", "nó", "nếu", "ở", "phải", "qua", "rất", "sau",
+    "sẽ", "số", "thì", "thậm chí", "trên", "trong", "trước", "từ", "tôi", "và", "vài", "về", "vì",
+    "với", "xuống", "dưới", "anh ấy", "cô ấy", "chúng ta", "chúng tôi",
+}
 ENGLISH_MEANING_WORDS = {"a", "an", "and", "article", "for", "from", "in", "is", "of", "or", "the", "to", "with"}
-NON_VIETNAMESE_HEADWORDS = {"café"}
 GRAMMAR_WORDS = {
     "adjective", "adverb", "adverbial", "article", "auxiliary", "clause", "conjunction",
     "contraction", "determiner", "form", "interrogative", "modal", "negator", "noun",
     "object", "particle", "possessive", "preposition", "pronoun", "quantifier", "relative",
     "subject", "verb",
+}
+CATEGORY_DESCRIPTION_TERMS = {
+    "pronoun": {"pronoun"}, "article": {"article"}, "determiner": {"determiner"},
+    "quantifier": {"quantifier"}, "distributive": {"distributive", "determiner"},
+    "preposition": {"preposition"}, "conjunction": {"conjunction"}, "auxiliary": {"auxiliary"},
+    "modal": {"modal"}, "negator": {"negator", "negative"}, "particle": {"particle"},
+    "discourse_adverb": {"adverb", "discourse"}, "contraction": {"contraction"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
 For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases. Preserve sense_id exactly. Do not add fields."""
@@ -75,7 +89,7 @@ def schema_required_fields(request: dict[str, Any]) -> list[str]:
     return request["body"]["text"]["format"]["schema"]["properties"]["translations"]["items"]["required"]
 
 
-def validate_rich_row(row: Any) -> str | None:
+def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | None:
     if not isinstance(row, dict) or set(row) != RICH_FIELDS:
         return "invalid rich row fields"
     if not isinstance(row["sense_id"], int) or isinstance(row["sense_id"], bool):
@@ -86,9 +100,9 @@ def validate_rich_row(row: Any) -> str | None:
     words = meaning.split()
     if (
         len(meaning) > 50 or not 1 <= len(words) <= 12 or any("\u4e00" <= char <= "\u9fff" for char in meaning)
-        or meaning[-1] in ".!?" or meaning.casefold() in NON_VIETNAMESE_HEADWORDS
+        or meaning[-1] in ".!?"
         or any(word.casefold().strip(",;:") in ENGLISH_MEANING_WORDS for word in words)
-        or (not any(char.casefold() in VIETNAMESE_MARKS for char in meaning) and meaning.casefold() not in VIETNAMESE_ASCII_HEADWORDS)
+        or (not any(char in "ăâđêôơư" for char in meaning.casefold()) and meaning.casefold() not in VIETNAMESE_FUNCTION_HEADWORDS)
     ):
         return "meaning must be concise Vietnamese headword"
     description = row["description"]
@@ -97,6 +111,10 @@ def validate_rich_row(row: Any) -> str | None:
         return "description must be capitalized English sentence"
     if not description.isascii() or len(description_words) < 3 or not any(word.strip(".,;:()'") in GRAMMAR_WORDS for word in description_words):
         return "description must be English grammatical explanation"
+    if source is not None:
+        category = source.get("category")
+        if category not in CATEGORY_DESCRIPTION_TERMS or not any(word.strip(".,;:()'") in CATEGORY_DESCRIPTION_TERMS[category] for word in description_words):
+            return "description must match source grammatical category"
     examples = row["examples"]
     if not isinstance(examples, list) or len(examples) != 1 or not isinstance(examples[0], dict) or set(examples[0]) != {"en", "vi"} or not all(isinstance(examples[0][key], str) and examples[0][key].strip() for key in ("en", "vi")):
         return "expected one bilingual example"
@@ -105,6 +123,10 @@ def validate_rich_row(row: Any) -> str | None:
         return "expected one to three collocations"
     if not all(value.isascii() for value in collocations):
         return "collocations must be natural phrases"
+    if source is not None:
+        form = str(source.get("word", "")).casefold().replace("’", "'")
+        if not form or any(not re.search(rf"(?<![a-z]){re.escape(form)}(?![a-z])", value.casefold().replace("’", "'")) for value in collocations):
+            return "collocations must include source form"
     if any(len(value.strip()) < 3 or len(value.split()) < 2 or any(not any(letter in "aeiouy" for letter in token.casefold()) for token in value.split()) for value in collocations):
         return "collocations must be natural phrases"
     return None
@@ -120,7 +142,8 @@ def _output_text(body: dict[str, Any]) -> str | None:
     return None
 
 
-def parse_output(path: Path, expected_ids: set[int]) -> tuple[list[dict[str, Any]], list[str]]:
+def parse_output(path: Path, expected_rows: dict[int, dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    expected_ids = set(expected_rows)
     accepted, errors = {}, []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
@@ -143,7 +166,7 @@ def parse_output(path: Path, expected_ids: set[int]) -> tuple[list[dict[str, Any
                 errors.append(f"{custom_id}: unknown sense_id {sense_id}"); continue
             if sense_id in accepted or sense_id in group:
                 errors.append(f"{custom_id}: duplicate sense_id {sense_id}"); continue
-            if error := validate_rich_row(row):
+            if error := validate_rich_row(row, expected_rows[sense_id]):
                 errors.append(f"{custom_id}: {error} for sense_id {sense_id}"); continue
             group[sense_id] = row
         accepted.update(group)
@@ -152,22 +175,22 @@ def parse_output(path: Path, expected_ids: set[int]) -> tuple[list[dict[str, Any
 
 
 def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path] | None = None) -> list[dict[str, Any]]:
-    source, ids = [], set()
+    source, source_by_id = [], {}
     for path in source_paths:
         for row in read_jsonl(path):
             if set(row) != QUEUE_FIELDS:
                 raise ValueError(f"{path}: expected function-word queue fields")
             sense_id = row["sense_id"]
-            if sense_id in ids:
+            if sense_id in source_by_id:
                 raise ValueError(f"duplicate source sense_id {sense_id}")
-            source.append(row); ids.add(sense_id)
+            source.append(row); source_by_id[sense_id] = row
     recovered = set()
     for path in accepted_paths or []:
         for row in read_jsonl(path):
-            if validate_rich_row(row):
-                raise ValueError(f"{path}: expected rich accepted fields")
-            if row["sense_id"] not in ids:
+            if row["sense_id"] not in source_by_id:
                 raise ValueError(f"{path}: recovered unknown sense_id {row['sense_id']}")
+            if validate_rich_row(row, source_by_id[row["sense_id"]]):
+                raise ValueError(f"{path}: expected rich accepted fields")
             recovered.add(row["sense_id"])
     return [row for row in source if row["sense_id"] not in recovered]
 
@@ -211,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status": print(json.dumps(refresh_status(args.metadata, args.env), ensure_ascii=False)); return 0
     if args.command == "download": print(download_output(args.metadata, args.output, args.env)); return 0
     if args.command == "parse":
-        source = read_jsonl(args.queue, args.limit, args.offset); rows, errors = parse_output(args.batch, {row["sense_id"] for row in source})
+        source = read_jsonl(args.queue, args.limit, args.offset); rows, errors = parse_output(args.batch, {row["sense_id"]: row for row in source})
         if errors and not args.allow_partial: raise ValueError("; ".join(errors[:20]))
         if errors and args.retry_queue is None: raise ValueError("--retry-queue is required with --allow-partial")
         write_jsonl(args.output, rows)

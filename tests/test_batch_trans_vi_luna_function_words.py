@@ -43,6 +43,12 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
         path.write_text(json.dumps(response, ensure_ascii=False) + "\n", encoding="utf-8")
         return path
 
+    def parse_one_with_source(self, row: dict, source: dict) -> tuple[list[dict], list[str]]:
+        return parse_output(self.write_output({
+            "custom_id": "function-word-000001",
+            "response": {"status_code": 200, "body": {"output_text": json.dumps({"translations": [row]})}},
+        }), {source["sense_id"]: source})
+
     def test_groups_at_most_25_and_requests_all_rich_fields(self):
         requests = build_requests([queue_row(index) for index in range(1, 27)], "gpt-5.6-luna", 25)
 
@@ -115,6 +121,33 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             "collocations": ["give to", "for you"],
         }))
 
+    def test_parse_rejects_non_vietnamese_latin_accented_meaning_with_source_context(self):
+        rows, errors = self.parse_one_with_source({**valid_row(), "meaning": "résumé"}, queue_row(1))
+
+        self.assertEqual(rows, [])
+        self.assertTrue(any("meaning must be concise Vietnamese headword for sense_id 1" in error for error in errors))
+
+    def test_parse_rejects_pos_label_description_with_source_context(self):
+        rows, errors = self.parse_one_with_source({**valid_row(), "description": "A noun word."}, queue_row(1))
+
+        self.assertEqual(rows, [])
+        self.assertTrue(any("description must match source grammatical category for sense_id 1" in error for error in errors))
+
+    def test_parse_rejects_collocation_unrelated_to_source_form(self):
+        rows, errors = self.parse_one_with_source({**valid_row(), "collocations": ["aa bb"]}, queue_row(1))
+
+        self.assertEqual(rows, [])
+        self.assertTrue(any("collocations must include source form for sense_id 1" in error for error in errors))
+
+    def test_parse_accepts_valid_contraction_with_source_context(self):
+        source = {**queue_row(1), "source_key": "supplement:function:can-not:contraction", "word": "can't", "category": "contraction", "pos": "contraction"}
+        row = {**valid_row(), "meaning": "không thể", "description": "Contraction used for the negative modal form.", "examples": [{"en": "I can't wait.", "vi": "Tôi không thể chờ."}], "collocations": ["can't wait", "can't help"]}
+
+        rows, errors = self.parse_one_with_source(row, source)
+
+        self.assertEqual(rows, [row])
+        self.assertEqual(errors, [])
+
     def test_parse_output_preserves_valid_sibling_and_marks_only_invalid_id_missing(self):
         output = self.write_output({
             "custom_id": "function-word-000001",
@@ -123,7 +156,7 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             ]}, ensure_ascii=False)}},
         })
 
-        rows, errors = parse_output(output, {1, 2})
+        rows, errors = parse_output(output, {1: queue_row(1), 2: queue_row(2)})
 
         self.assertEqual(rows, [valid_row(1)])
         self.assertEqual(errors, [
