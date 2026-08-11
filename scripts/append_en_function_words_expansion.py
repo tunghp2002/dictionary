@@ -39,8 +39,8 @@ def append_expansion(source_path: Path, expansion_path: Path) -> int:
         is_informal = row["word"] in INFORMAL_WORDS
         if is_informal != (row.get("register") == "informal") or is_informal != (row["priority"] == 6):
             raise ValueError(f"invalid informal metadata: {row['word']}")
-        if not is_informal and ("register" in row or row["priority"] == 6):
-            raise ValueError(f"invalid standard metadata: {row['word']}")
+        if not is_informal and ("register" in row or not 1 <= row["priority"] <= 5):
+            raise ValueError(f"invalid standard priority: {row['word']}")
     expansion_keys = {row["source_key"] for row in expansion}
     if len(expansion_keys) != 184:
         raise ValueError("duplicate source_key in expansion")

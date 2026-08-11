@@ -98,6 +98,17 @@ class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "reused hint"):
                 append_expansion(Path(name) / "source.jsonl", altered)
 
+    def test_rejects_standard_priority_outside_one_through_five(self):
+        for priority in (0, 7):
+            with self.subTest(priority=priority), tempfile.TemporaryDirectory() as name:
+                altered = Path(name) / "expansion.jsonl"
+                rows = [json.loads(line) for line in EXPANSION.read_text(encoding="utf-8").splitlines()]
+                rows[0]["priority"] = priority
+                altered.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+                (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "standard priority"):
+                    append_expansion(Path(name) / "source.jsonl", altered)
+
     def test_preserves_every_historical_mapping_and_appends_contiguous_ids(self):
         historical = subprocess.run(["git", "show", "9add374:packs/en/core/function-words.jsonl"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
         registry = subprocess.run(["git", "show", "9add374:packs/en/core/sense-ids.tsv"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
@@ -107,8 +118,8 @@ class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
             old = ids.read_bytes()
             self.assertEqual(184, append_expansion(table, EXPANSION))
             _, assigned = build_function_word_queue(table, ids)
-            old_map = {line.split("\t", 1)[1] for line in old.decode().splitlines()[1:]}
-            self.assertEqual({line.split("\t", 1)[1] for line in old.decode().splitlines()[1:]}, {key for key in assigned if key in old_map})
+            old_map = {source_key: int(sense_id) for sense_id, source_key in (line.split("\t", 1) for line in old.decode().splitlines()[1:])}
+            self.assertEqual(old_map, {key: assigned[key] for key in old_map})
             new_ids = sorted(value for key, value in assigned.items() if key not in old_map)
             self.assertEqual(184, len(new_ids))
             self.assertEqual(list(range(new_ids[0], new_ids[-1] + 1)), new_ids)
