@@ -29,7 +29,7 @@
   },
   "output": {
     "path": "packs/en/core/data.jsonl",
-    "sha256": "6f4c148c709d9129411a9c2cd777c1fddd34241ea1a2e6673883fb5e8863a6ed",
-    "bytes": 14464987
+    "sha256": "3fd6dcac1a6a1368cbcd3df52bfdb09956687b789c6a33bb9743d7118a761b0d",
+    "bytes": 14345961
   }
 }
