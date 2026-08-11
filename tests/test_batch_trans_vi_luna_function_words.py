@@ -89,6 +89,32 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             "collocations must be natural phrases",
         )
 
+    def test_rich_row_rejects_cafe_meaning(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "meaning": "café"}),
+            "meaning must be concise Vietnamese headword",
+        )
+
+    def test_rich_row_rejects_one_word_description(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "description": "Article."}),
+            "description must be English grammatical explanation",
+        )
+
+    def test_rich_row_rejects_vowelless_collocation(self):
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "collocations": ["zz zz"]}),
+            "collocations must be natural phrases",
+        )
+
+    def test_rich_row_accepts_expected_function_word_shapes(self):
+        self.assertIsNone(validate_rich_row({
+            **valid_row(),
+            "meaning": "cho",
+            "description": "Preposition used before a recipient.",
+            "collocations": ["give to", "for you"],
+        }))
+
     def test_parse_output_preserves_valid_sibling_and_marks_only_invalid_id_missing(self):
         output = self.write_output({
             "custom_id": "function-word-000001",
