@@ -10,6 +10,7 @@ from scripts.build_en_function_words import build_function_word_queue, load_func
 
 ROOT = Path(__file__).parents[1]
 EXPANSION = ROOT / "packs/en/core/function-words-expansion.jsonl"
+BANNED_HINT_PATTERNS = ("performs its distinct", "construction required by its", "conventionally expressed by", "not as a content-word substitute", "stands in for a noun phrase")
 
 
 def existing(source_key: str) -> dict:
@@ -32,6 +33,17 @@ EXPECTED = {
 
 
 class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
+    def test_hints_reject_banned_templates_in_a_fixture_and_real_manifest(self):
+        rows = load_function_words(EXPANSION)
+        self.assertFalse(any(pattern in value.casefold() for row in rows for value in (row["description_hint"], row["usage_hint"]) for pattern in BANNED_HINT_PATTERNS))
+        with tempfile.TemporaryDirectory() as name:
+            altered = Path(name) / "expansion.jsonl"
+            bad = [dict(row) for row in rows]
+            bad[0]["description_hint"] = "This performs its distinct pronoun function."
+            altered.write_text("".join(json.dumps(row) + "\n" for row in bad), encoding="utf-8")
+            (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "banned hint"):
+                append_expansion(Path(name) / "source.jsonl", altered)
     def test_expansion_has_the_exact_184_approved_pairs(self):
         rows = load_function_words(EXPANSION)
         self.assertEqual(184, len(rows))

@@ -20,6 +20,7 @@ INVENTORY = {
 APPROVED_PAIRS = {(word, category) for category, words in INVENTORY.items() for word in words.split("|")}
 INFORMAL_WORDS = {"ain't", "gonna", "wanna", "gotta", "kinda", "sorta", "lemme", "dunno"}
 NO_ONE_EXCEPTION = ("no-one", "pronoun")
+BANNED_HINT_PATTERNS = ("performs its distinct", "construction required by its", "conventionally expressed by", "not as a content-word substitute", "stands in for a noun phrase")
 
 def append_expansion(source_path: Path, expansion_path: Path) -> int:
     """Append the complete expansion atomically, or leave the source unchanged."""
@@ -29,6 +30,8 @@ def append_expansion(source_path: Path, expansion_path: Path) -> int:
     hints = [(row["description_hint"], row["usage_hint"]) for row in expansion]
     if len(set(hints)) != len(hints):
         raise ValueError("reused hint in expansion")
+    if any(pattern in hint.casefold() for row in expansion for hint in (row["description_hint"], row["usage_hint"]) for pattern in BANNED_HINT_PATTERNS):
+        raise ValueError("banned hint template in expansion")
     for row in expansion:
         pair = (row["word"], row["category"])
         expected_key = f"supplement:function:{row['word'].casefold()}:{row['category']}"
