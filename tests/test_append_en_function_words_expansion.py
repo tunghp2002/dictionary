@@ -10,7 +10,32 @@ from scripts.build_en_function_words import build_function_word_queue, load_func
 
 ROOT = Path(__file__).parents[1]
 EXPANSION = ROOT / "packs/en/core/function-words-expansion.jsonl"
-BANNED_HINT_PATTERNS = ("performs its distinct", "construction required by its", "conventionally expressed by", "not as a content-word substitute", "stands in for a noun phrase")
+BANNED_HINT_PATTERNS = (
+    "this use is for",
+    "performs its distinct",
+    "construction required by its",
+    "conventionally expressed by",
+    "not as a content-word substitute",
+    "stands in for a noun phrase",
+    "refers to the participant, thing, or unknown identity indicated by its form",
+    "limits the following noun by possession, identity, amount, or comparison",
+    "states the amount or number of the following noun phrase",
+    "carries tense or agreement while the following verb supplies the lexical meaning",
+    "adds obligation, permission, ability, prediction, or advice",
+    "marks the relation has its grammatical use",
+    "asks about or modifies place, time, manner, degree, or a related clause",
+    "combines with a verb to express direction, result, completion, or separation",
+    "use it in the subject, object, possessive, reflexive, or relative position that its form allows",
+    "place it before the noun it modifies; do not use it alone unless english permits ellipsis",
+    "use it with count or non-count nouns according to its quantity meaning",
+    "use it with a past participle, present participle, or base verb as its form requires",
+    "use it with the base verb or its fixed multiword complement",
+    "before its complement in the construction that expresses",
+    "at the start of the dependent or coordinated clause showing",
+    "place it at the question, relative-clause, or adverbial position it governs",
+    "keep it with the verb in the established phrasal-verb order",
+    "in informal writing when the surrounding grammar identifies whether it means",
+)
 
 
 def existing(source_key: str) -> dict:
@@ -33,17 +58,25 @@ EXPECTED = {
 
 
 class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
-    def test_hints_reject_banned_templates_in_a_fixture_and_real_manifest(self):
+    def test_hints_reject_prohibited_templates_and_appendage(self):
         rows = load_function_words(EXPANSION)
         self.assertFalse(any(pattern in value.casefold() for row in rows for value in (row["description_hint"], row["usage_hint"]) for pattern in BANNED_HINT_PATTERNS))
-        with tempfile.TemporaryDirectory() as name:
-            altered = Path(name) / "expansion.jsonl"
-            bad = [dict(row) for row in rows]
-            bad[0]["description_hint"] = "This performs its distinct pronoun function."
-            altered.write_text("".join(json.dumps(row) + "\n" for row in bad), encoding="utf-8")
-            (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "banned hint"):
-                append_expansion(Path(name) / "source.jsonl", altered)
+        for pattern in BANNED_HINT_PATTERNS:
+            with self.subTest(pattern=pattern), tempfile.TemporaryDirectory() as name:
+                altered = Path(name) / "expansion.jsonl"
+                bad = [dict(row) for row in rows]
+                bad[0]["description_hint"] = f"Bad hint: {pattern}."
+                altered.write_text("".join(json.dumps(row) + "\n" for row in bad), encoding="utf-8")
+                (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "banned hint"):
+                    append_expansion(Path(name) / "source.jsonl", altered)
+
+    def test_authoritative_expansion_rows_equal_the_manifest_by_source_key(self):
+        manifest = {row["source_key"]: row for row in load_function_words(EXPANSION)}
+        source_rows = load_function_words(ROOT / "packs/en/core/function-words.jsonl")
+        authoritative = {row["source_key"]: row for row in source_rows if row["source_key"] in manifest}
+        self.assertEqual(327, len(source_rows))
+        self.assertEqual(manifest, authoritative)
     def test_expansion_has_the_exact_184_approved_pairs(self):
         rows = load_function_words(EXPANSION)
         self.assertEqual(184, len(rows))
@@ -99,16 +132,16 @@ class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_key"):
                 append_expansion(Path(name) / "source.jsonl", altered)
 
-    def test_rejects_reused_generic_hints(self):
-        with tempfile.TemporaryDirectory() as name:
-            altered = Path(name) / "expansion.jsonl"
-            rows = [json.loads(line) for line in EXPANSION.read_text(encoding="utf-8").splitlines()]
-            rows[1]["description_hint"] = rows[0]["description_hint"]
-            rows[1]["usage_hint"] = rows[0]["usage_hint"]
-            altered.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
-            (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "reused hint"):
-                append_expansion(Path(name) / "source.jsonl", altered)
+    def test_rejects_reused_description_or_usage_hint(self):
+        for field in ("description_hint", "usage_hint"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as name:
+                altered = Path(name) / "expansion.jsonl"
+                rows = [json.loads(line) for line in EXPANSION.read_text(encoding="utf-8").splitlines()]
+                rows[1][field] = rows[0][field]
+                altered.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+                (Path(name) / "source.jsonl").write_text("", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "reused hint"):
+                    append_expansion(Path(name) / "source.jsonl", altered)
 
     def test_rejects_standard_priority_outside_one_through_five(self):
         for priority in (0, 7):

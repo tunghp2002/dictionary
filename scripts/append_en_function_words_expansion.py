@@ -20,16 +20,42 @@ INVENTORY = {
 APPROVED_PAIRS = {(word, category) for category, words in INVENTORY.items() for word in words.split("|")}
 INFORMAL_WORDS = {"ain't", "gonna", "wanna", "gotta", "kinda", "sorta", "lemme", "dunno"}
 NO_ONE_EXCEPTION = ("no-one", "pronoun")
-BANNED_HINT_PATTERNS = ("performs its distinct", "construction required by its", "conventionally expressed by", "not as a content-word substitute", "stands in for a noun phrase")
+BANNED_HINT_PATTERNS = (
+    "this use is for",
+    "performs its distinct",
+    "construction required by its",
+    "conventionally expressed by",
+    "not as a content-word substitute",
+    "stands in for a noun phrase",
+    "refers to the participant, thing, or unknown identity indicated by its form",
+    "limits the following noun by possession, identity, amount, or comparison",
+    "states the amount or number of the following noun phrase",
+    "carries tense or agreement while the following verb supplies the lexical meaning",
+    "adds obligation, permission, ability, prediction, or advice",
+    "marks the relation has its grammatical use",
+    "asks about or modifies place, time, manner, degree, or a related clause",
+    "combines with a verb to express direction, result, completion, or separation",
+    "use it in the subject, object, possessive, reflexive, or relative position that its form allows",
+    "place it before the noun it modifies; do not use it alone unless english permits ellipsis",
+    "use it with count or non-count nouns according to its quantity meaning",
+    "use it with a past participle, present participle, or base verb as its form requires",
+    "use it with the base verb or its fixed multiword complement",
+    "before its complement in the construction that expresses",
+    "at the start of the dependent or coordinated clause showing",
+    "place it at the question, relative-clause, or adverbial position it governs",
+    "keep it with the verb in the established phrasal-verb order",
+    "in informal writing when the surrounding grammar identifies whether it means",
+)
 
 def append_expansion(source_path: Path, expansion_path: Path) -> int:
     """Append the complete expansion atomically, or leave the source unchanged."""
     expansion = load_function_words(expansion_path)
     if len(expansion) != 184 or {(row["word"], row["category"]) for row in expansion} != APPROVED_PAIRS:
         raise ValueError("expansion must contain the approved inventory")
-    hints = [(row["description_hint"], row["usage_hint"]) for row in expansion]
-    if len(set(hints)) != len(hints):
-        raise ValueError("reused hint in expansion")
+    for field in ("description_hint", "usage_hint"):
+        hints = [row[field] for row in expansion]
+        if len(set(hints)) != len(hints):
+            raise ValueError(f"reused hint in expansion: {field}")
     if any(pattern in hint.casefold() for row in expansion for hint in (row["description_hint"], row["usage_hint"]) for pattern in BANNED_HINT_PATTERNS):
         raise ValueError("banned hint template in expansion")
     for row in expansion:
