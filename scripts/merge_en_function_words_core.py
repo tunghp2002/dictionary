@@ -94,8 +94,11 @@ def merge_function_words_into_core(
             by_word.setdefault(key, []).append(record)
         else:
             record["frequency"] = min(record.get("frequency", row["priority"]), row["priority"])
-        if numeric_id not in {sense["id"] for sense in record["senses"]}:
-            record["senses"].append({"id": numeric_id, "pos": row["pos"]})
+        sense = next((sense for sense in record["senses"] if sense["id"] == numeric_id), None)
+        if sense is None:
+            record["senses"].append({"id": numeric_id, "pos": row["category"]})
+        else:
+            sense["pos"] = row["category"]
         id_owners[numeric_id] = key
 
     required_ids = set(source_ids.values())

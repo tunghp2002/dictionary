@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.build_core_en import load_id_registry
 from scripts.merge_en_function_words_core import merge_function_words_into_core
 
 
@@ -94,6 +95,20 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
         self.write_registry([(1000000000001, "supplement:function:i:pronoun")])
         with self.assertRaisesRegex(ValueError, "different word"):
             merge_function_words_into_core(self.core, self.forms, self.registry)
+
+    def test_real_supplemental_senses_use_schema_pos_categories(self):
+        root = Path(__file__).parents[1]
+        schema = json.loads((root / "packs/en/core/schema.json").read_text(encoding="utf-8"))
+        allowed = set(schema["$defs"]["sense"]["properties"]["pos"]["enum"])
+        registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
+        emitted = {
+            sense["id"]: sense["pos"]
+            for record in read_jsonl(root / "packs/en/core/data.jsonl")
+            for sense in record["senses"]
+        }
+        for row in read_jsonl(root / "packs/en/core/function-words.jsonl"):
+            self.assertEqual(emitted[registry[row["source_key"]]], row["category"])
+            self.assertIn(row["category"], allowed)
 
 
 if __name__ == "__main__":
