@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .env
 .worktrees/
+/.superpowers/sdd/
 packs/en/trans-vi/review/queue.jsonl
 packs/en/trans-vi/review/luna-meaning/
 packs/en/trans-vi/review/luna-remaining/
