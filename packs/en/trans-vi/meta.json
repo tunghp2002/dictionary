@@ -3,12 +3,12 @@
   "key_path": "sense_id",
   "source_language": "en",
   "target_language": "vi",
-  "source": "clean-ai-meaning-only",
-  "records": 185129,
-  "filled_records": 57446,
-  "placeholder_records": 127683,
-  "core_senses": 185129,
-  "coverage": 0.3103025457923934,
+  "source": "canonical-meaning-plus-function-word-rich",
+  "records": 185272,
+  "filled_records": 185272,
+  "placeholder_records": 0,
+  "core_senses": 185272,
+  "coverage": 1.0,
   "fields": [
     "sense_id",
     "meaning",
@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "fef086d5d7431952f7d23cf1b0dd4cd17d703ed8f8642aecaab43bf79dc364a7",
-    "bytes": 17606473
+    "sha256": "4643ccf7acf1fb660015c65032999f6c85992d76b6e3312dff2313a9bedfa75b",
+    "bytes": 20081385
   }
 }
