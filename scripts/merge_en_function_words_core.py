@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +52,26 @@ def _write_jsonl_atomically(path: Path, records: list[dict[str, Any]]) -> None:
         raise
 
 
+def _refresh_metadata(meta_path: Path, core_path: Path, records: list[dict[str, Any]], registry: dict[str, int]) -> None:
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    payload = core_path.read_bytes()
+    metadata["records"] = len(records)
+    metadata["senses"] = sum(len(record["senses"]) for record in records)
+    metadata["reserved_sense_ids"] = len(registry)
+    metadata["with_frequency"] = sum("frequency" in record for record in records)
+    metadata["output"]["sha256"] = sha256(payload).hexdigest()
+    metadata["output"]["bytes"] = len(payload)
+    temporary = meta_path.with_suffix(meta_path.suffix + ".tmp")
+    try:
+        temporary.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, meta_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def merge_function_words_into_core(
-    core_path: Path, function_words_path: Path, registry_path: Path
+    core_path: Path, function_words_path: Path, registry_path: Path, meta_path: Path | None = None
 ) -> int:
     """Merge function-word senses into core data and return the source-row count."""
     rows = load_function_words(function_words_path)
@@ -95,10 +114,14 @@ def merge_function_words_into_core(
         else:
             record["frequency"] = min(record.get("frequency", row["priority"]), row["priority"])
         sense = next((sense for sense in record["senses"] if sense["id"] == numeric_id), None)
+        normalized_sense = {"id": numeric_id, "pos": row["category"]}
+        if row.get("register") == "informal":
+            normalized_sense["tags"] = {"register": ["informal"]}
         if sense is None:
-            record["senses"].append({"id": numeric_id, "pos": row["category"]})
+            record["senses"].append(normalized_sense)
         else:
-            sense["pos"] = row["category"]
+            sense.clear()
+            sense.update(normalized_sense)
         id_owners[numeric_id] = key
 
     required_ids = set(source_ids.values())
@@ -113,4 +136,6 @@ def merge_function_words_into_core(
 
     records.sort(key=lambda record: (record["word"].casefold(), record["word"]))
     _write_jsonl_atomically(core_path, records)
+    if meta_path is not None:
+        _refresh_metadata(meta_path, core_path, records, registry)
     return len(rows)
