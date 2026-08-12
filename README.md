@@ -73,7 +73,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements-build.txt
 .venv/bin/python scripts/fetch_sources.py
 .venv/bin/python scripts/build_core_en.py
-.venv/bin/python scripts/build_trans_vi_skeleton.py
+.venv/bin/python scripts/build_trans_vi_canonical.py
 ```
 
 Kết quả:
@@ -86,16 +86,12 @@ Kết quả:
 - `packs/en/trans-vi/seed.jsonl`: các record translation đã điền thủ công.
 - `packs/en/trans-vi/meta.json`: số record đã điền, placeholder và checksum.
 
-### English–Vietnamese curated target
+### English–Vietnamese canonical data
 
-`packs/en/trans-vi/target-manifest.json` chọn 30.000 lemma tiếng Anh có tần
-suất cao nhất (thứ tự xác định), tương ứng 57.446 sense ID. Các mô tả
-`description` là gloss tiếng Anh từ Open English WordNet trong hàng đợi review;
-chúng cung cấp ngữ cảnh phân biệt nghĩa, không phải bản dịch. Bản dịch
-`meaning` phải là nghĩa tiếng Việt ngắn gọn (tối đa 35 ký tự), không chứa chữ
-Hán và không lặp lại toàn bộ gloss. Các batch đã duyệt trong
-`packs/en/trans-vi/review/batches/` ghi đè record target theo `sense_id`, còn
-ví dụ và collocation của record được giữ nguyên.
+`packs/en/trans-vi/data.jsonl` là dataset canonical cho toàn bộ sense ID tiếng
+Anh. Mỗi `meaning` là nghĩa tiếng Việt ngắn gọn; `description`, ví dụ và
+collocation chỉ được giữ khi có dữ liệu rich đã duyệt. Các hàng đợi review
+và batch 30.000 từ từ quy trình cũ không còn thuộc repository.
 
 Core sense dùng schema chung. Các trường metadata rỗng được bỏ khỏi JSONL để
 giảm kích thước:
@@ -146,11 +142,9 @@ Translation pack chỉ chứa dữ liệu theo ngôn ngữ:
 }
 ```
 
-Khung hiện có toàn bộ `185.129` sense của core. Target đã hoàn tất `57.446`
-sense (coverage `31,03%`); `127.683` sense ngoài target vẫn là placeholder.
-`examples`/`collocations` sẽ fill ở phase sau cho nhóm từ phổ biến. Khi fill
-thêm, cập nhật `seed.jsonl` rồi chạy `scripts/build_trans_vi_skeleton.py`;
-không tạo ID mới ở translation.
+Khung hiện có `185.456` sense của core và đã có meaning tiếng Việt cho tất
+cả. Khi cập nhật bản dịch, giữ nguyên `sense_id` rồi chạy
+`scripts/build_trans_vi_canonical.py` để đồng bộ `data.jsonl`, `seed.jsonl` và metadata.
 
 Kiểm thử:
 
