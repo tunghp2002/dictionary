@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_en_function_words import build_function_word_queue
+from scripts.build_en_function_words import build_function_word_queue, load_function_words
 
 
 def write_table(path: Path, rows: list[dict]) -> None:
@@ -25,6 +25,20 @@ def row(source_key: str, word: str, priority: int = 10, category: str = "pronoun
 
 
 class BuildEnFunctionWordsTest(unittest.TestCase):
+    def test_accepts_legacy_rows_and_tagged_informal_apostrophe_free_contraction(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            table_path = Path(temp_name) / "table.jsonl"
+            tagged = row("supplement:function:lemme:contraction", "lemme", category="contraction")
+            tagged["register"] = "informal"
+            write_table(table_path, [row("supplement:function:i:pronoun", "I"), tagged])
+            self.assertEqual(2, len(load_function_words(table_path)))
+
+    def test_rejects_untagged_apostrophe_free_contraction(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            table_path = Path(temp_name) / "table.jsonl"
+            write_table(table_path, [row("supplement:function:lemme:contraction", "lemme", category="contraction")])
+            with self.assertRaisesRegex(ValueError, "invalid contraction spelling"):
+                load_function_words(table_path)
     def test_queue_appends_ids_and_sorts_priority(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

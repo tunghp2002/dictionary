@@ -4,10 +4,10 @@
   "source_language": "en",
   "target_language": "vi",
   "source": "canonical-meaning-plus-function-word-rich",
-  "records": 185272,
-  "filled_records": 185272,
+  "records": 185456,
+  "filled_records": 185456,
   "placeholder_records": 0,
-  "core_senses": 185272,
+  "core_senses": 185456,
   "coverage": 1.0,
   "fields": [
     "sense_id",
@@ -19,7 +19,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "4643ccf7acf1fb660015c65032999f6c85992d76b6e3312dff2313a9bedfa75b",
-    "bytes": 20081385
+    "sha256": "c0122b81d1f5db0d1ecf87f3c944380c34dbcb21f66a6390da4473af8d8bef72",
+    "bytes": 20139063
   }
 }

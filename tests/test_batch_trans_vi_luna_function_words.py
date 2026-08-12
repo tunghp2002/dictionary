@@ -1,12 +1,15 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.build_core_en import load_id_registry
 from scripts.batch_trans_vi_luna_function_words import (
     build_requests,
     main,
     parse_output,
+    rebuild_queue,
     schema_required_fields,
     validate_rich_row,
 )
@@ -35,6 +38,31 @@ def valid_row(sense_id: int = 1) -> dict:
     }
 
 
+def where_source() -> dict:
+    return {
+        **queue_row(1),
+        "source_key": "supplement:function:where:adv",
+        "word": "where",
+        "pos": "adv",
+        "category": "adv",
+        "description_hint": "Interrogative or relative adverb asking about place.",
+        "usage_hint": "Use it in a question or relative clause about location.",
+    }
+
+
+def gonna_source() -> dict:
+    return {
+        **queue_row(1),
+        "source_key": "supplement:function:gonna:modal",
+        "word": "gonna",
+        "pos": "verb",
+        "category": "modal",
+        "description_hint": "Informal spoken reduction of going to before a verb.",
+        "usage_hint": "Use it only in informal speech or dialogue.",
+        "register": "informal",
+    }
+
+
 class BatchLunaFunctionWordsTest(unittest.TestCase):
     def write_output(self, response: dict) -> Path:
         directory = tempfile.TemporaryDirectory()
@@ -58,6 +86,35 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
         self.assertEqual(set(schema_required_fields(requests[0])), {
             "sense_id", "meaning", "description", "examples", "collocations"
         })
+        prompt = requests[0]["body"]["input"][0]["content"][0]["text"]
+        self.assertIn("at most five words", prompt)
+        self.assertIn("mechanical literal contractions", prompt)
+
+    def test_requests_preserve_optional_informal_register(self):
+        request = build_requests([gonna_source()], "gpt-5.6-luna", 25)[0]
+
+        self.assertEqual(request["body"]["input"][1]["content"][0]["text"].count('"register":"informal"'), 1)
+
+    def test_parse_accepts_role_specific_adverb_description(self):
+        row = {**valid_row(), "meaning": "ở đâu", "description": "Adverb asking about or referring to a place.", "collocations": ["where are you", "from where"]}
+
+        rows, errors = self.parse_one_with_source(row, where_source())
+
+        self.assertEqual(rows, [row])
+        self.assertEqual(errors, [])
+
+    def test_parse_requires_informal_wording_for_informal_source(self):
+        row = {**valid_row(), "meaning": "sắp", "description": "Modal spoken reduction of going to before a verb.", "collocations": ["gonna leave", "gonna call"]}
+
+        rows, errors = self.parse_one_with_source(row, gonna_source())
+
+        self.assertEqual(rows, [])
+        self.assertTrue(any("description must state informal register for sense_id 1" in error for error in errors))
+
+        informal_row = {**row, "description": "Informal modal spoken reduction of going to before a verb."}
+        rows, errors = self.parse_one_with_source(informal_row, gonna_source())
+        self.assertEqual(rows, [informal_row])
+        self.assertEqual(errors, [])
 
     def test_rich_row_requires_one_bilingual_example(self):
         self.assertIsNone(validate_rich_row(valid_row()))
@@ -74,6 +131,16 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             validate_rich_row({**valid_row(), "meaning": "dùng trước danh từ xác định."}),
             "meaning must be concise Vietnamese headword",
         )
+
+    def test_rich_row_limits_meanings_to_five_words(self):
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "một người nào đó đây"}))
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "meaning": "một người nào đó ở đây"}),
+            "meaning must be concise Vietnamese headword",
+        )
+
+    def test_rich_row_accepts_a_quoted_english_form_in_a_concise_vietnamese_meaning(self):
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”"}))
 
     def test_rich_row_rejects_vowelless_meaning_garbage(self):
         self.assertEqual(
@@ -268,6 +335,98 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
 
             self.assertEqual(main(["retry-queue", "--source", str(source), "--accepted", str(accepted), "--output", str(retry)]), 1)
             self.assertEqual([json.loads(line) for line in retry.read_text(encoding="utf-8").splitlines()], [queue_row(2)])
+
+    def test_source_aware_meaning_rejects_english_only_values(self):
+        source = {**queue_row(1), "word": "am"}
+        for meaning in ('"am"', '“am”', 'abc'):
+            with self.subTest(meaning=meaning):
+                self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, source), "meaning must contain Vietnamese material")
+        the_source = {**queue_row(1), "word": "the"}
+        for meaning in ('"the"', 'the'):
+            with self.subTest(meaning=meaning):
+                self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, the_source), "meaning must contain Vietnamese material")
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”", "collocations": ["am ready"]}, source))
+        for meaning in ("cho", "khi", "qua", "do", "hay", "ra", "sao", "nay", "café"):
+            with self.subTest(meaning=meaning):
+                self.assertIsNone(validate_rich_row({**valid_row(), "meaning": meaning, "collocations": ["am ready"]}, source))
+
+    def test_rebuild_queue_uses_current_authoritative_rows_and_registry_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, source, registry = root / "manifest.jsonl", root / "source.jsonl", root / "ids.tsv"
+            rows = [{**queue_row(index), "source_key": f"supplement:function:where{index}:adv", "word": f"where{index}", "pos": "adv", "category": "adv", "description_hint": f"Current description {index}.", "usage_hint": f"Current usage {index}."} for index in range(1, 185)]
+            manifest.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "sense_id"}) + "\n" for row in rows), encoding="utf-8")
+            source.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "sense_id"}) + "\n" for row in rows), encoding="utf-8")
+            registry.write_text("sense_id\tsource_key\n" + "".join(f"{1_000_000_000_000 + index}\tsupplement:function:where{index}:adv\n" for index in range(1, 185)), encoding="utf-8")
+            rebuilt = rebuild_queue(manifest, source, registry)
+            self.assertEqual([row["sense_id"] for row in rebuilt], list(range(1_000_000_000_001, 1_000_000_000_185)))
+            stale = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+            stale[0]["usage_hint"] = "Stale usage."
+            source.write_text("".join(json.dumps(item) + "\n" for item in stale), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "differs from manifest"):
+                rebuild_queue(manifest, source, registry)
+
+    def test_rebuilt_queue_matches_current_repository_sources(self):
+        root = Path(__file__).parents[1]
+        manifest = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words-expansion.jsonl").read_text(encoding="utf-8").splitlines() if line)}
+        source = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words.jsonl").read_text(encoding="utf-8").splitlines() if line)}
+        queue = rebuild_queue(root / "packs/en/core/function-words-expansion.jsonl", root / "packs/en/core/function-words.jsonl", root / "packs/en/core/sense-ids.tsv")
+        registry = {source_key: int(sense_id) for sense_id, source_key in (line.split("\t", 1) for line in (root / "packs/en/core/sense-ids.tsv").read_text(encoding="utf-8").splitlines()[1:])}
+        self.assertEqual(len(queue), 184)
+        self.assertEqual({row["source_key"] for row in queue}, set(manifest))
+        self.assertTrue(all({key: value for key, value in row.items() if key != "sense_id"} == manifest[row["source_key"]] == source[row["source_key"]] for row in queue))
+        self.assertTrue(all(registry[row["source_key"]] == row["sense_id"] for row in queue))
+        self.assertEqual(next(row for row in queue if row["word"] == "no-one")["source_key"], "supplement:function:no-one:pronoun:hyphenated")
+        self.assertEqual(sum(row.get("register") == "informal" for row in queue), 8)
+        historical_keys = set(source) - set(manifest)
+        self.assertFalse({row["sense_id"] for row in queue} & {registry[key] for key in historical_keys})
+
+    def test_checked_in_expansion_meanings_are_concise_and_not_source_forms(self):
+        root = Path(__file__).parents[1]
+        registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
+        expansion = [
+            json.loads(line)
+            for line in (root / "packs/en/core/function-words-expansion.jsonl").read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        translations = {
+            row["sense_id"]: row
+            for row in (
+                json.loads(line)
+                for line in (root / "packs/en/trans-vi/data.jsonl").read_text(encoding="utf-8").splitlines()
+                if line
+            )
+        }
+        self.assertEqual(len(expansion), 184)
+        for source in expansion:
+            with self.subTest(source_key=source["source_key"]):
+                meaning = translations[registry[source["source_key"]]]["meaning"].strip()
+                self.assertTrue(meaning)
+                self.assertLessEqual(len(re.findall(r"[^\W\d_]+", meaning)), 5)
+                self.assertNotEqual(
+                    re.sub(r"[\s,;/\-\"â€œâ€]+", "", meaning.casefold()),
+                    re.sub(r"[\s,;/\-\"â€œâ€]+", "", source["word"].casefold()),
+                )
+
+    def test_checked_in_auxiliary_and_quantifier_contexts_are_natural(self):
+        root = Path(__file__).parents[1]
+        registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
+        translations = {
+            row["sense_id"]: row
+            for row in (
+                json.loads(line)
+                for line in (root / "packs/en/trans-vi/data.jsonl").read_text(encoding="utf-8").splitlines()
+                if line
+            )
+        }
+        am = translations[registry["supplement:function:am:auxiliary"]]
+        were = translations[registry["supplement:function:were:auxiliary"]]
+        plenty = translations[registry["supplement:function:plenty:quantifier"]]
+
+        self.assertIn("I am being careful", am["collocations"])
+        self.assertIn("were waiting outside", were["collocations"])
+        self.assertNotIn("were you there", were["collocations"])
+        self.assertEqual(plenty["examples"][0]["vi"], "Chúng ta có nhiều hơn đủ.")
 
 
 if __name__ == "__main__":

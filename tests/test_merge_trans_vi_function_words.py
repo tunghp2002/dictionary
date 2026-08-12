@@ -54,6 +54,21 @@ class MergeTransViFunctionWordsTest(unittest.TestCase):
         self.assertEqual(rows[1], rich_row())
         self.assertEqual(rows[0]["description"], "Old OEWN detail.")
 
+    def test_merge_preserves_legacy_long_meaning_but_rejects_new_long_meaning(self):
+        legacy = {**rich_row(), "meaning": "một nghĩa tiếng Việt dài hơn năm từ"}
+        self.assertEqual(merge_function_words(self.data, [legacy], self.registry), 1)
+
+
+    def test_expansion_manifest_enforces_five_word_meaning_while_legacy_is_preserved(self):
+        self.registry.write_text(self.registry.read_text(encoding="utf-8") + "1000000000003\tsupplement:function:new:article\n", encoding="utf-8")
+        (self.root / "function-words-expansion.jsonl").write_text(json.dumps({"source_key": "supplement:function:new:article", "word": "new", "pos": "article", "category": "article", "priority": 1, "description_hint": "New article.", "usage_hint": "Use new."}) + "\n", encoding="utf-8")
+        legacy = {**rich_row(), "meaning": "mot nghia tieng Viet dai hon nam tu"}
+        expansion = {**rich_row(1000000000003), "meaning": "mot nghia tieng Viet qua dai day"}
+        with self.assertRaisesRegex(ValueError, "meaning must be concise"):
+            merge_function_words(self.data, [legacy, expansion], self.registry)
+        expansion["meaning"] = "moi"
+        self.assertEqual(merge_function_words(self.data, [legacy, expansion], self.registry), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

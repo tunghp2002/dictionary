@@ -12,7 +12,7 @@
 
 - Use the exact 184 `(word, category)` pairs from `docs/superpowers/specs/2026-08-12-en-function-words-expansion-design.md`; no extra rows and no omitted rows.
 - Preserve every existing function-word row, core record, sense ID, translation, and metadata field unless it is a derived count/checksum affected by the merge.
-- New source IDs use `supplement:function:<word.casefold()>:<category>` and are append-only in `packs/en/core/sense-ids.tsv`.
+- New source IDs use `supplement:function:<word.casefold()>:<category>` and are append-only in `packs/en/core/sense-ids.tsv`. The sole exception is the new hyphenated `no-one` pronoun, which uses `supplement:function:no-one:pronoun:hyphenated` because the historical `no one` mapping already owns `supplement:function:no-one:pronoun`.
 - The only informal forms are `ain't`, `gonna`, `wanna`, `gotta`, `kinda`, `sorta`, `lemme`, and `dunno`; each carries `register: informal`.
 - `adv` is the POS/category for question/relative adverbs; do not mislabel them `discourse_adverb`.
 - New rich rows use exactly `sense_id`, `meaning`, `description`, `examples`, `collocations`; one bilingual example; one to three collocations; concise Vietnamese; and a role-specific English description.
