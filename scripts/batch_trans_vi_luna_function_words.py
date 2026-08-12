@@ -23,8 +23,9 @@ except ModuleNotFoundError:  # direct script execution
 QUEUE_FIELDS = {
     "source_key", "word", "pos", "category", "priority", "description_hint", "usage_hint", "sense_id"
 }
+QUEUE_FIELD_SETS = (QUEUE_FIELDS, QUEUE_FIELDS | {"register"})
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
-MEANING_SEPARATORS = set(" ,;/-")
+MEANING_SEPARATORS = set(" ,;/-\"“”")
 ASCII_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
 ENGLISH_TYPOGRAPHY = set("‘’“”–—…")
 GRAMMAR_WORDS = {
@@ -38,7 +39,7 @@ CATEGORY_DESCRIPTION_TERMS = {
     "quantifier": {"quantifier"}, "distributive": {"distributive", "determiner"},
     "preposition": {"preposition"}, "conjunction": {"conjunction"}, "auxiliary": {"auxiliary"},
     "modal": {"modal"}, "negator": {"negator", "negative"}, "particle": {"particle"},
-    "discourse_adverb": {"adverb", "discourse"}, "contraction": {"contraction"},
+    "discourse_adverb": {"adverb", "discourse"}, "adv": {"adverb"}, "contraction": {"contraction"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
 For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
@@ -67,7 +68,7 @@ def build_requests(rows: list[dict[str, Any]], model: str, group_size: int) -> l
     for offset in range(0, len(rows), group_size):
         group = rows[offset : offset + group_size]
         for row in group:
-            if set(row) != QUEUE_FIELDS:
+            if set(row) not in QUEUE_FIELD_SETS:
                 raise ValueError(f"invalid queue fields for {row.get('sense_id')}")
         requests.append({
             "custom_id": f"function-word-{len(requests) + 1:06d}", "method": "POST", "url": "/v1/responses",
@@ -118,6 +119,8 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
             return "description must match source grammatical category"
         if len(description_words) < 4:
             return "description must be sufficiently explanatory"
+        if source.get("register") == "informal" and "informal" not in description_words:
+            return "description must state informal register"
     examples = row["examples"]
     if not isinstance(examples, list) or len(examples) != 1 or not isinstance(examples[0], dict) or set(examples[0]) != {"en", "vi"} or not all(isinstance(examples[0][key], str) and examples[0][key].strip() for key in ("en", "vi")):
         return "expected one bilingual example"
@@ -191,7 +194,7 @@ def build_retry_queue(source_paths: list[Path], accepted_paths: list[Path] | Non
     source, source_by_id = [], {}
     for path in source_paths:
         for row in read_jsonl(path):
-            if set(row) != QUEUE_FIELDS:
+            if set(row) not in QUEUE_FIELD_SETS:
                 raise ValueError(f"{path}: expected function-word queue fields")
             sense_id = row["sense_id"]
             if sense_id in source_by_id:

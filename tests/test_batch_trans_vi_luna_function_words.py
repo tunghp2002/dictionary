@@ -35,6 +35,31 @@ def valid_row(sense_id: int = 1) -> dict:
     }
 
 
+def where_source() -> dict:
+    return {
+        **queue_row(1),
+        "source_key": "supplement:function:where:adv",
+        "word": "where",
+        "pos": "adv",
+        "category": "adv",
+        "description_hint": "Interrogative or relative adverb asking about place.",
+        "usage_hint": "Use it in a question or relative clause about location.",
+    }
+
+
+def gonna_source() -> dict:
+    return {
+        **queue_row(1),
+        "source_key": "supplement:function:gonna:modal",
+        "word": "gonna",
+        "pos": "verb",
+        "category": "modal",
+        "description_hint": "Informal spoken reduction of going to before a verb.",
+        "usage_hint": "Use it only in informal speech or dialogue.",
+        "register": "informal",
+    }
+
+
 class BatchLunaFunctionWordsTest(unittest.TestCase):
     def write_output(self, response: dict) -> Path:
         directory = tempfile.TemporaryDirectory()
@@ -59,6 +84,32 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             "sense_id", "meaning", "description", "examples", "collocations"
         })
 
+    def test_requests_preserve_optional_informal_register(self):
+        request = build_requests([gonna_source()], "gpt-5.6-luna", 25)[0]
+
+        self.assertEqual(request["body"]["input"][1]["content"][0]["text"].count('"register":"informal"'), 1)
+
+    def test_parse_accepts_role_specific_adverb_description(self):
+        row = {**valid_row(), "meaning": "ở đâu", "description": "Adverb asking about or referring to a place.", "collocations": ["where are you", "from where"]}
+
+        rows, errors = self.parse_one_with_source(row, where_source())
+
+        self.assertEqual(rows, [row])
+        self.assertEqual(errors, [])
+
+    def test_parse_requires_informal_wording_for_informal_source(self):
+        row = {**valid_row(), "meaning": "sắp", "description": "Modal spoken reduction of going to before a verb.", "collocations": ["gonna leave", "gonna call"]}
+
+        rows, errors = self.parse_one_with_source(row, gonna_source())
+
+        self.assertEqual(rows, [])
+        self.assertTrue(any("description must state informal register for sense_id 1" in error for error in errors))
+
+        informal_row = {**row, "description": "Informal modal spoken reduction of going to before a verb."}
+        rows, errors = self.parse_one_with_source(informal_row, gonna_source())
+        self.assertEqual(rows, [informal_row])
+        self.assertEqual(errors, [])
+
     def test_rich_row_requires_one_bilingual_example(self):
         self.assertIsNone(validate_rich_row(valid_row()))
         self.assertEqual(validate_rich_row({**valid_row(), "examples": []}), "expected one bilingual example")
@@ -74,6 +125,9 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             validate_rich_row({**valid_row(), "meaning": "dùng trước danh từ xác định."}),
             "meaning must be concise Vietnamese headword",
         )
+
+    def test_rich_row_accepts_a_quoted_english_form_in_a_concise_vietnamese_meaning(self):
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”"}))
 
     def test_rich_row_rejects_vowelless_meaning_garbage(self):
         self.assertEqual(
