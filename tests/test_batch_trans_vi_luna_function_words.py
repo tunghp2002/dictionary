@@ -326,11 +326,15 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
 
     def test_source_aware_meaning_rejects_english_only_values(self):
         source = {**queue_row(1), "word": "am"}
-        for meaning in ('"am"', '“am”', '"the"', 'the', 'abc', 'café'):
+        for meaning in ('"am"', '“am”', 'abc'):
             with self.subTest(meaning=meaning):
                 self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, source), "meaning must contain Vietnamese material")
+        the_source = {**queue_row(1), "word": "the"}
+        for meaning in ('"the"', 'the'):
+            with self.subTest(meaning=meaning):
+                self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, the_source), "meaning must contain Vietnamese material")
         self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”", "collocations": ["am ready"]}, source))
-        for meaning in ("cho", "khi", "qua"):
+        for meaning in ("cho", "khi", "qua", "do", "hay", "ra", "sao", "nay", "café"):
             with self.subTest(meaning=meaning):
                 self.assertIsNone(validate_rich_row({**valid_row(), "meaning": meaning, "collocations": ["am ready"]}, source))
 
@@ -350,11 +354,11 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "differs from manifest"):
                 rebuild_queue(manifest, source, registry)
 
-    def test_attempt_two_queue_matches_current_repository_sources(self):
+    def test_rebuilt_queue_matches_current_repository_sources(self):
         root = Path(__file__).parents[1]
         manifest = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words-expansion.jsonl").read_text(encoding="utf-8").splitlines() if line)}
         source = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words.jsonl").read_text(encoding="utf-8").splitlines() if line)}
-        queue = [json.loads(line) for line in (root / "packs/en/trans-vi/review/function-words-expansion/attempt-2/queue.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        queue = rebuild_queue(root / "packs/en/core/function-words-expansion.jsonl", root / "packs/en/core/function-words.jsonl", root / "packs/en/core/sense-ids.tsv")
         registry = {source_key: int(sense_id) for sense_id, source_key in (line.split("\t", 1) for line in (root / "packs/en/core/sense-ids.tsv").read_text(encoding="utf-8").splitlines()[1:])}
         self.assertEqual(len(queue), 184)
         self.assertEqual({row["source_key"] for row in queue}, set(manifest))
