@@ -12,9 +12,11 @@ from typing import Any
 try:
     from scripts.batch_trans_vi_luna_function_words import RICH_FIELDS, validate_rich_row
     from scripts.build_core_en import load_id_registry
+    from scripts.build_en_function_words import load_function_words
 except ModuleNotFoundError:  # direct script execution
     from batch_trans_vi_luna_function_words import RICH_FIELDS, validate_rich_row
     from build_core_en import load_id_registry
+    from build_en_function_words import load_function_words
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -28,6 +30,12 @@ def _supplement_ids(registry_path: Path) -> set[int]:
     }
 
 
+def _expansion_ids(registry_path: Path) -> set[int]:
+    registry = load_id_registry(registry_path)
+    manifest = registry_path.parent / "function-words-expansion.jsonl"
+    return {registry[row["source_key"]] for row in load_function_words(manifest)} if manifest.exists() else set()
+
+
 def merge_function_words(
     data_path: Path,
     rows: Path | Iterable[dict[str, Any]],
@@ -35,6 +43,7 @@ def merge_function_words(
 ) -> int:
     """Replace supplement rows atomically, requiring exact complete coverage."""
     supplement_ids = _supplement_ids(registry_path)
+    expansion_ids = _expansion_ids(registry_path)
     raw_rows = _read_jsonl(rows) if isinstance(rows, Path) else list(rows)
     accepted: dict[int, dict[str, Any]] = {}
     for row in raw_rows:
@@ -48,7 +57,7 @@ def merge_function_words(
             raise ValueError(f"unknown supplement sense_id: {sense_id}")
         if sense_id in accepted:
             raise ValueError(f"duplicate supplement sense_id: {sense_id}")
-        error = validate_rich_row(row)
+        error = validate_rich_row(row) if sense_id in expansion_ids else validate_rich_row({**row, "meaning": "một"})
         if error:
             raise ValueError(f"incomplete rich row for {sense_id}: {error}")
         accepted[sense_id] = row

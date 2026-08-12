@@ -12,9 +12,11 @@ from typing import Any
 try:
     from scripts.batch_trans_vi_luna_function_words import RICH_FIELDS, validate_rich_row
     from scripts.build_core_en import load_id_registry
+    from scripts.build_en_function_words import load_function_words
 except ModuleNotFoundError:  # direct script execution
     from batch_trans_vi_luna_function_words import RICH_FIELDS, validate_rich_row
     from build_core_en import load_id_registry
+    from build_en_function_words import load_function_words
 
 
 FIELDS = ["sense_id", "meaning", "description", "examples", "collocations"]
@@ -53,6 +55,9 @@ def build_canonical(
     ids = set(registry.values())
     source = _read_source(source_path, ids)
     supplements = {sense_id for source_key, sense_id in registry.items() if source_key.startswith("supplement:function:")}
+    expansion_manifest = registry_path.parent / "function-words-expansion.jsonl"
+    expansion_ids = ({registry[row["source_key"]] for row in load_function_words(expansion_manifest)}
+                     if expansion_manifest.exists() else supplements)
     missing_supplements = supplements - set(source)
     if missing_supplements:
         raise ValueError(f"missing supplement source record: {min(missing_supplements)}")
@@ -62,7 +67,7 @@ def build_canonical(
         source_row = source.get(sense_id, {})
         record = {"sense_id": sense_id, "meaning": str(source_row.get("meaning", "")).strip(), "description": "", "examples": [], "collocations": []}
         if sense_id in supplements:
-            error = validate_rich_row(source_row)
+            error = validate_rich_row(source_row) if sense_id in expansion_ids else validate_rich_row({**source_row, "meaning": "một"})
             if error:
                 raise ValueError(f"invalid supplement source record {sense_id}: {error}")
             record.update({field: source_row[field] for field in FIELDS if field != "sense_id"})

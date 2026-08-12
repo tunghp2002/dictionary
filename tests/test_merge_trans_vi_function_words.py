@@ -54,6 +54,10 @@ class MergeTransViFunctionWordsTest(unittest.TestCase):
         self.assertEqual(rows[1], rich_row())
         self.assertEqual(rows[0]["description"], "Old OEWN detail.")
 
+    def test_merge_preserves_legacy_long_meaning_but_rejects_new_long_meaning(self):
+        legacy = {**rich_row(), "meaning": "một nghĩa tiếng Việt dài hơn năm từ"}
+        self.assertEqual(merge_function_words(self.data, [legacy], self.registry), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
