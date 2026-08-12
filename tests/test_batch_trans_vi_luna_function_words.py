@@ -326,10 +326,13 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
 
     def test_source_aware_meaning_rejects_english_only_values(self):
         source = {**queue_row(1), "word": "am"}
-        for meaning in ('"am"', '“am”', '"the"', 'the', 'abc'):
+        for meaning in ('"am"', '“am”', '"the"', 'the', 'abc', 'café'):
             with self.subTest(meaning=meaning):
                 self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, source), "meaning must contain Vietnamese material")
         self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”", "collocations": ["am ready"]}, source))
+        for meaning in ("cho", "khi", "qua"):
+            with self.subTest(meaning=meaning):
+                self.assertIsNone(validate_rich_row({**valid_row(), "meaning": meaning, "collocations": ["am ready"]}, source))
 
     def test_rebuild_queue_uses_current_authoritative_rows_and_registry_ids(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -346,6 +349,21 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
             source.write_text("".join(json.dumps(item) + "\n" for item in stale), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "differs from manifest"):
                 rebuild_queue(manifest, source, registry)
+
+    def test_attempt_two_queue_matches_current_repository_sources(self):
+        root = Path(__file__).parents[1]
+        manifest = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words-expansion.jsonl").read_text(encoding="utf-8").splitlines() if line)}
+        source = {row["source_key"]: row for row in (json.loads(line) for line in (root / "packs/en/core/function-words.jsonl").read_text(encoding="utf-8").splitlines() if line)}
+        queue = [json.loads(line) for line in (root / "packs/en/trans-vi/review/function-words-expansion/attempt-2/queue.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        registry = {source_key: int(sense_id) for sense_id, source_key in (line.split("\t", 1) for line in (root / "packs/en/core/sense-ids.tsv").read_text(encoding="utf-8").splitlines()[1:])}
+        self.assertEqual(len(queue), 184)
+        self.assertEqual({row["source_key"] for row in queue}, set(manifest))
+        self.assertTrue(all({key: value for key, value in row.items() if key != "sense_id"} == manifest[row["source_key"]] == source[row["source_key"]] for row in queue))
+        self.assertTrue(all(registry[row["source_key"]] == row["sense_id"] for row in queue))
+        self.assertEqual(next(row for row in queue if row["word"] == "no-one")["source_key"], "supplement:function:no-one:pronoun:hyphenated")
+        self.assertEqual(sum(row.get("register") == "informal" for row in queue), 8)
+        historical_keys = set(source) - set(manifest)
+        self.assertFalse({row["sense_id"] for row in queue} & {registry[key] for key in historical_keys})
 
 
 if __name__ == "__main__":

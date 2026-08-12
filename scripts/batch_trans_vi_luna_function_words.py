@@ -32,6 +32,7 @@ QUEUE_FIELDS = {
 QUEUE_FIELD_SETS = (QUEUE_FIELDS, QUEUE_FIELDS | {"register"})
 RICH_FIELDS = {"sense_id", "meaning", "description", "examples", "collocations"}
 MEANING_SEPARATORS = set(" ,;/-\"“”")
+UNACCENTED_VIETNAMESE_MEANINGS = {"cho", "khi", "qua"}
 ASCII_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
 ENGLISH_TYPOGRAPHY = set("‘’“”–—…")
 GRAMMAR_WORDS = {
@@ -130,8 +131,15 @@ def _has_non_garbage_context(tokens: list[str]) -> bool:
 
 def _has_vietnamese_material(meaning: str, form: str) -> bool:
     without_form = re.sub(re.escape(form.casefold()), "", meaning.casefold())
-    vietnamese_marks = set("\u0300\u0301\u0303\u0309\u0323\u0302\u0306\u031b")
-    return any(vietnamese_marks & set(unicodedata.normalize("NFD", word)) for word in re.findall(r"[^\W\d_]+", without_form))
+    words = re.findall(r"[^\W\d_]+", without_form)
+    return any(
+        word in UNACCENTED_VIETNAMESE_MEANINGS
+        or (
+            not set(word) & set("fjwz")
+            and any(unicodedata.combining(char) or char == "đ" for char in unicodedata.normalize("NFD", word))
+        )
+        for word in words
+    )
 
 
 def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | None:
