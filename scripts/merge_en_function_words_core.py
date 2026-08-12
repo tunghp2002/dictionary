@@ -120,8 +120,17 @@ def merge_function_words_into_core(
         if sense is None:
             record["senses"].append(normalized_sense)
         else:
-            sense.clear()
-            sense.update(normalized_sense)
+            sense["pos"] = normalized_sense["pos"]
+            tags = sense.get("tags")
+            if isinstance(tags, dict):
+                if "tags" in normalized_sense:
+                    tags.update(normalized_sense["tags"])
+                else:
+                    tags.pop("register", None)
+                    if not tags:
+                        sense.pop("tags")
+            elif "tags" in normalized_sense:
+                sense["tags"] = normalized_sense["tags"]
         id_owners[numeric_id] = key
 
     required_ids = set(source_ids.values())

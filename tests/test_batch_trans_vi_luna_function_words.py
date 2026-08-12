@@ -1,8 +1,10 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.build_core_en import load_id_registry
 from scripts.batch_trans_vi_luna_function_words import (
     build_requests,
     main,
@@ -378,6 +380,53 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
         self.assertEqual(sum(row.get("register") == "informal" for row in queue), 8)
         historical_keys = set(source) - set(manifest)
         self.assertFalse({row["sense_id"] for row in queue} & {registry[key] for key in historical_keys})
+
+    def test_checked_in_expansion_meanings_are_concise_and_not_source_forms(self):
+        root = Path(__file__).parents[1]
+        registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
+        expansion = [
+            json.loads(line)
+            for line in (root / "packs/en/core/function-words-expansion.jsonl").read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        translations = {
+            row["sense_id"]: row
+            for row in (
+                json.loads(line)
+                for line in (root / "packs/en/trans-vi/data.jsonl").read_text(encoding="utf-8").splitlines()
+                if line
+            )
+        }
+        self.assertEqual(len(expansion), 184)
+        for source in expansion:
+            with self.subTest(source_key=source["source_key"]):
+                meaning = translations[registry[source["source_key"]]]["meaning"].strip()
+                self.assertTrue(meaning)
+                self.assertLessEqual(len(re.findall(r"[^\W\d_]+", meaning)), 5)
+                self.assertNotEqual(
+                    re.sub(r"[\s,;/\-\"â€œâ€]+", "", meaning.casefold()),
+                    re.sub(r"[\s,;/\-\"â€œâ€]+", "", source["word"].casefold()),
+                )
+
+    def test_checked_in_auxiliary_and_quantifier_contexts_are_natural(self):
+        root = Path(__file__).parents[1]
+        registry = load_id_registry(root / "packs/en/core/sense-ids.tsv")
+        translations = {
+            row["sense_id"]: row
+            for row in (
+                json.loads(line)
+                for line in (root / "packs/en/trans-vi/data.jsonl").read_text(encoding="utf-8").splitlines()
+                if line
+            )
+        }
+        am = translations[registry["supplement:function:am:auxiliary"]]
+        were = translations[registry["supplement:function:were:auxiliary"]]
+        plenty = translations[registry["supplement:function:plenty:quantifier"]]
+
+        self.assertIn("I am being careful", am["collocations"])
+        self.assertIn("were waiting outside", were["collocations"])
+        self.assertNotIn("were you there", were["collocations"])
+        self.assertEqual(plenty["examples"][0]["vi"], "Chúng ta có nhiều hơn đủ.")
 
 
 if __name__ == "__main__":

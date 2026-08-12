@@ -110,7 +110,13 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
             "word": "gonna", "frequency": 6,
             "senses": [
                 {"id": 1000000000001, "pos": "noun", "tags": {"register": ["archaic"]}},
-                {"id": 1000000000003, "pos": "wrong", "tags": {"register": ["standard"]}},
+                {
+                    "id": 1000000000003,
+                    "pos": "wrong",
+                    "gloss": "Existing supplemental note.",
+                    "provenance": {"curator": "manual"},
+                    "tags": {"register": ["standard"], "region": ["global"]},
+                },
             ],
         }])
         write_jsonl(self.forms, [
@@ -127,7 +133,13 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
 
         senses = find_word(self.core, "gonna")["senses"]
         self.assertEqual(senses[0], {"id": 1000000000001, "pos": "noun", "tags": {"register": ["archaic"]}})
-        self.assertEqual(senses[1], {"id": 1000000000003, "pos": "modal", "tags": {"register": ["informal"]}})
+        self.assertEqual(senses[1], {
+            "id": 1000000000003,
+            "pos": "modal",
+            "gloss": "Existing supplemental note.",
+            "provenance": {"curator": "manual"},
+            "tags": {"register": ["informal"], "region": ["global"]},
+        })
         self.assertEqual(self.core.read_bytes(), first)
 
     def test_existing_word_gets_new_sense_and_priority(self):
