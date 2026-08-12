@@ -48,7 +48,7 @@ CATEGORY_DESCRIPTION_TERMS = {
     "discourse_adverb": {"adverb", "discourse"}, "adv": {"adverb"}, "contraction": {"contraction"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
-For every supplied source row, return exactly one rich record. Follow that row's description_hint and usage_hint exactly: do not substitute a lexical, prepositional, conjunction, or other grammatical role. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi, and every example and collocation must use the supplied category. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
+For every supplied source row, return exactly one rich record. Follow that row's description_hint and usage_hint exactly: do not substitute a lexical, prepositional, conjunction, or other grammatical role. Meaning must be a concise natural Vietnamese headword or phrase of at most five words; avoid mechanical literal contractions. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi, and every example and collocation must use the supplied category. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
 RESPONSE_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {"translations": {"type": "array", "items": {
@@ -143,7 +143,7 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
     meaning = unicodedata.normalize("NFC", row["meaning"].strip()).casefold()
     words = re.findall(r"[^\W\d_]+", meaning)
     if (
-        len(meaning) > 50 or not 1 <= len(words) <= 12
+        len(meaning) > 50 or not 1 <= len(words) <= 5
         or meaning[-1] in ".!?"
         or any((not char.isalpha() or "LATIN" not in unicodedata.name(char, "")) and char not in MEANING_SEPARATORS for char in meaning)
         or any(not set(unicodedata.normalize("NFD", word)) & set("aeiouy") for word in words)

@@ -84,6 +84,9 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
         self.assertEqual(set(schema_required_fields(requests[0])), {
             "sense_id", "meaning", "description", "examples", "collocations"
         })
+        prompt = requests[0]["body"]["input"][0]["content"][0]["text"]
+        self.assertIn("at most five words", prompt)
+        self.assertIn("mechanical literal contractions", prompt)
 
     def test_requests_preserve_optional_informal_register(self):
         request = build_requests([gonna_source()], "gpt-5.6-luna", 25)[0]
@@ -124,6 +127,13 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
     def test_rich_row_rejects_sentence_like_meanings(self):
         self.assertEqual(
             validate_rich_row({**valid_row(), "meaning": "dùng trước danh từ xác định."}),
+            "meaning must be concise Vietnamese headword",
+        )
+
+    def test_rich_row_limits_meanings_to_five_words(self):
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "một người nào đó đây"}))
+        self.assertEqual(
+            validate_rich_row({**valid_row(), "meaning": "một người nào đó ở đây"}),
             "meaning must be concise Vietnamese headword",
         )
 
