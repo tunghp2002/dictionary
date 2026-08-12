@@ -18,6 +18,12 @@ except ModuleNotFoundError:  # direct script execution
     from batch_trans_vi_luna_meanings import (
         api_json, api_request, load_api_key, multipart_file, read_jsonl, write_jsonl,
     )
+try:
+    from scripts.build_core_en import load_id_registry
+    from scripts.build_en_function_words import load_function_words
+except ModuleNotFoundError:
+    from build_core_en import load_id_registry
+    from build_en_function_words import load_function_words
 
 
 QUEUE_FIELDS = {
@@ -42,7 +48,7 @@ CATEGORY_DESCRIPTION_TERMS = {
     "discourse_adverb": {"adverb", "discourse"}, "adv": {"adverb"}, "contraction": {"contraction"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
-For every supplied form, return exactly one rich record. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
+For every supplied source row, return exactly one rich record. Follow that row's description_hint and usage_hint exactly: do not substitute a lexical, prepositional, conjunction, or other grammatical role. Meaning must be a concise natural Vietnamese headword or phrase. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi, and every example and collocation must use the supplied category. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""
 RESPONSE_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {"translations": {"type": "array", "items": {
@@ -80,6 +86,37 @@ def build_requests(rows: list[dict[str, Any]], model: str, group_size: int) -> l
     return requests
 
 
+def rebuild_queue(manifest_path: Path, source_path: Path, registry_path: Path) -> list[dict[str, Any]]:
+    """Rebuild the expansion queue from the approved manifest and current source."""
+    manifest = load_function_words(manifest_path)
+    source = load_function_words(source_path)
+    manifest_by_key = {row["source_key"]: row for row in manifest}
+    source_by_key = {row["source_key"]: row for row in source}
+    if len(manifest_by_key) != 184:
+        raise ValueError("manifest must contain exactly 184 rows")
+    if set(manifest_by_key) - set(source_by_key):
+        raise ValueError("authoritative source is missing manifest rows")
+    for key, manifest_row in manifest_by_key.items():
+        if source_by_key[key] != manifest_row:
+            raise ValueError(f"authoritative source differs from manifest: {key}")
+    registry = load_id_registry(registry_path)
+    old_keys = set(source_by_key) - set(manifest_by_key)
+    old_ids = {registry[key] for key in old_keys if key in registry}
+    queue = []
+    for row in source:
+        if row["source_key"] not in manifest_by_key:
+            continue
+        if row["source_key"] not in registry:
+            raise ValueError(f"missing registry ID: {row['source_key']}")
+        item = {**row, "sense_id": registry[row["source_key"]]}
+        if item["sense_id"] in old_ids:
+            raise ValueError(f"expansion ID overlaps historical function ID: {item['sense_id']}")
+        queue.append(item)
+    if len(queue) != 184 or {row["source_key"] for row in queue} != set(manifest_by_key):
+        raise ValueError("queue does not cover approved manifest")
+    return queue
+
+
 def schema_required_fields(request: dict[str, Any]) -> list[str]:
     return request["body"]["text"]["format"]["schema"]["properties"]["translations"]["items"]["required"]
 
@@ -89,6 +126,12 @@ def _has_non_garbage_context(tokens: list[str]) -> bool:
     return bool(letters) and not any(
         len(token) > 1 and len(set(token)) == 1 for token in letters
     )
+
+
+def _has_vietnamese_material(meaning: str, form: str) -> bool:
+    without_form = re.sub(re.escape(form.casefold()), "", meaning.casefold())
+    vietnamese_marks = set("\u0300\u0301\u0303\u0309\u0323\u0302\u0306\u031b")
+    return any(vietnamese_marks & set(unicodedata.normalize("NFD", word)) for word in re.findall(r"[^\W\d_]+", without_form))
 
 
 def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | None:
@@ -107,6 +150,8 @@ def validate_rich_row(row: Any, source: dict[str, Any] | None = None) -> str | N
         or any(not set(unicodedata.normalize("NFD", word)) & set("aeiouy") for word in words)
     ):
         return "meaning must be concise Vietnamese headword"
+    if source is not None and not _has_vietnamese_material(meaning, str(source.get("word", ""))):
+        return "meaning must contain Vietnamese material"
     description = unicodedata.normalize("NFKC", row["description"]) if isinstance(row["description"], str) else ""
     description_words = ASCII_WORD_RE.findall(description.casefold())
     if not isinstance(description, str) or not description.strip() or not description[0].isupper() or description[-1] not in ".!?":
@@ -237,6 +282,7 @@ def download_output(metadata_path: Path, output_path: Path, env_path: Path) -> i
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__); commands = parser.add_subparsers(dest="command", required=True)
     prepare = commands.add_parser("prepare"); prepare.add_argument("--queue", type=Path, required=True); prepare.add_argument("--output", type=Path, required=True); prepare.add_argument("--limit", type=int); prepare.add_argument("--offset", type=int, default=0); prepare.add_argument("--group-size", type=int, default=25); prepare.add_argument("--model", default="gpt-5.6-luna")
+    rebuild = commands.add_parser("rebuild-queue"); rebuild.add_argument("--manifest", type=Path, required=True); rebuild.add_argument("--source", type=Path, required=True); rebuild.add_argument("--registry", type=Path, required=True); rebuild.add_argument("--output", type=Path, required=True)
     for name in ("submit", "status", "download"):
         command = commands.add_parser(name); command.add_argument("--metadata", type=Path, required=True); command.add_argument("--env", type=Path, default=Path(".env"))
         if name == "submit": command.add_argument("--input", type=Path, required=True)
@@ -246,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "prepare":
         rows = build_requests(read_jsonl(args.queue, args.limit, args.offset), args.model, args.group_size); write_jsonl(args.output, rows); return len(rows)
+    if args.command == "rebuild-queue":
+        rows = rebuild_queue(args.manifest, args.source, args.registry); write_jsonl(args.output, rows); return len(rows)
     if args.command == "submit": print(json.dumps(submit_batch(args.input, args.metadata, args.env), ensure_ascii=False)); return 0
     if args.command == "status": print(json.dumps(refresh_status(args.metadata, args.env), ensure_ascii=False)); return 0
     if args.command == "download": print(download_output(args.metadata, args.output, args.env)); return 0

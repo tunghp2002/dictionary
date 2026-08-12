@@ -7,6 +7,7 @@ from scripts.batch_trans_vi_luna_function_words import (
     build_requests,
     main,
     parse_output,
+    rebuild_queue,
     schema_required_fields,
     validate_rich_row,
 )
@@ -322,6 +323,29 @@ class BatchLunaFunctionWordsTest(unittest.TestCase):
 
             self.assertEqual(main(["retry-queue", "--source", str(source), "--accepted", str(accepted), "--output", str(retry)]), 1)
             self.assertEqual([json.loads(line) for line in retry.read_text(encoding="utf-8").splitlines()], [queue_row(2)])
+
+    def test_source_aware_meaning_rejects_english_only_values(self):
+        source = {**queue_row(1), "word": "am"}
+        for meaning in ('"am"', '“am”', '"the"', 'the', 'abc'):
+            with self.subTest(meaning=meaning):
+                self.assertEqual(validate_rich_row({**valid_row(), "meaning": meaning}, source), "meaning must contain Vietnamese material")
+        self.assertIsNone(validate_rich_row({**valid_row(), "meaning": "trợ động từ “am”", "collocations": ["am ready"]}, source))
+
+    def test_rebuild_queue_uses_current_authoritative_rows_and_registry_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, source, registry = root / "manifest.jsonl", root / "source.jsonl", root / "ids.tsv"
+            rows = [{**queue_row(index), "source_key": f"supplement:function:where{index}:adv", "word": f"where{index}", "pos": "adv", "category": "adv", "description_hint": f"Current description {index}.", "usage_hint": f"Current usage {index}."} for index in range(1, 185)]
+            manifest.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "sense_id"}) + "\n" for row in rows), encoding="utf-8")
+            source.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "sense_id"}) + "\n" for row in rows), encoding="utf-8")
+            registry.write_text("sense_id\tsource_key\n" + "".join(f"{1_000_000_000_000 + index}\tsupplement:function:where{index}:adv\n" for index in range(1, 185)), encoding="utf-8")
+            rebuilt = rebuild_queue(manifest, source, registry)
+            self.assertEqual([row["sense_id"] for row in rebuilt], list(range(1_000_000_000_001, 1_000_000_000_185)))
+            stale = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+            stale[0]["usage_hint"] = "Stale usage."
+            source.write_text("".join(json.dumps(item) + "\n" for item in stale), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "differs from manifest"):
+                rebuild_queue(manifest, source, registry)
 
 
 if __name__ == "__main__":
