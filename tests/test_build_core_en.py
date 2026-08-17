@@ -14,7 +14,6 @@ from scripts.build_core_en import (
     assign_sense_ids,
     finalize_records,
     grammar_from_subcats,
-    load_cefr,
     load_entries,
     file_sha256,
     sense_id,
@@ -63,11 +62,10 @@ class BuildCoreEnTest(unittest.TestCase):
             registry = {}
             assign_sense_ids(records, registry)
             add_frequency_ranks(records, lambda _: 5.0)
-            finalize_records(records, {"heavy": "A1"})
+            finalize_records(records)
 
         self.assertEqual(records[0]["word"], "heavy")
         self.assertEqual(records[0]["ipa"], "/ˈhɛ.vi/")
-        self.assertEqual(records[0]["level"], "A1")
         self.assertEqual(records[0]["frequency"], 1)
         self.assertEqual(len(records[0]["senses"]), 2)
         self.assertEqual(
@@ -102,15 +100,6 @@ class BuildCoreEnTest(unittest.TestCase):
         )
         self.assertEqual(registry["deleted-but-reserved"], sense_id(10))
 
-    def test_cefr_uses_lowest_broad_level(self):
-        with tempfile.TemporaryDirectory() as temp_name:
-            path = Path(temp_name) / "levels.csv"
-            path.write_text(
-                "headword,pos,CEFR\nheavy,adjective,B2\nheavy,adjective,A1.2\n",
-                encoding="utf-8",
-            )
-            self.assertEqual(load_cefr([path]), {"heavy": "A1"})
-
     def test_accepts_oewn_homograph_pos_suffix(self):
         with tempfile.TemporaryDirectory() as temp_name:
             entries = Path(temp_name)
@@ -132,6 +121,28 @@ class BuildCoreEnTest(unittest.TestCase):
         )
         self.assertEqual(grammar_from_subcats("noun", ["vtai"]), {})
 
+    def test_extracts_sense_specific_synonyms_and_antonyms(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            entries = Path(temp_name)
+            (entries / "entries-h.yaml").write_text(
+                "hot:\n  a:\n    sense:\n"
+                "    - id: 'hot%3:00:00::'\n      synset: 001-a\n"
+                "      antonym: ['cold%3:00:00::']\n"
+                "warm:\n  a:\n    sense:\n"
+                "    - id: 'warm%3:00:00::'\n      synset: 001-a\n"
+                "cold:\n  a:\n    sense:\n"
+                "    - id: 'cold%3:00:00::'\n      synset: 002-a\n",
+                encoding="utf-8",
+            )
+            records, _ = load_entries(entries)
+            assign_sense_ids(records, {})
+
+        by_word = {record["word"]: record["senses"][0] for record in records}
+        self.assertEqual(by_word["hot"]["synonyms"], ["warm"])
+        self.assertEqual(by_word["warm"]["synonyms"], ["hot"])
+        self.assertEqual(by_word["hot"]["antonyms"], ["cold"])
+        self.assertNotIn("antonyms", by_word["cold"])
+
     def test_checked_in_core_has_valid_grammar(self):
         root = Path(__file__).parents[1]
         data_path = root / "packs/en/core/data.jsonl"
@@ -140,8 +151,11 @@ class BuildCoreEnTest(unittest.TestCase):
         )
         allowed = {"transitive", "intransitive", "linking"}
         grammar_count = 0
+        synonym_count = 0
+        antonym_count = 0
         for line in data_path.read_text(encoding="utf-8").splitlines():
             record = json.loads(line)
+            self.assertNotIn("level", record)
             for sense in record["senses"]:
                 grammar = sense.get("grammar", {})
                 self.assertTrue(set(grammar) <= {"countability", "verb_type"})
@@ -150,8 +164,19 @@ class BuildCoreEnTest(unittest.TestCase):
                 if "verb_type" in grammar:
                     self.assertEqual(sense["pos"], "verb")
                     grammar_count += 1
-        self.assertEqual(metadata["schema_version"], 3)
+                for field in ("synonyms", "antonyms"):
+                    values = sense.get(field, [])
+                    self.assertEqual(len(values), len(set(values)))
+                    self.assertTrue(all(isinstance(value, str) and value for value in values))
+                    self.assertNotIn(record["word"].casefold(), {value.casefold() for value in values})
+                synonym_count += "synonyms" in sense
+                antonym_count += "antonyms" in sense
+        self.assertEqual(metadata["schema_version"], 5)
+        self.assertNotIn("with_level", metadata)
+        self.assertNotIn("cefrj", metadata["sources"])
         self.assertEqual(metadata["senses_with_grammar"], grammar_count)
+        self.assertEqual(metadata["senses_with_synonyms"], synonym_count)
+        self.assertEqual(metadata["senses_with_antonyms"], antonym_count)
         self.assertEqual(metadata["output"]["sha256"], file_sha256(data_path))
 
 

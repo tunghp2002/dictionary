@@ -7,7 +7,6 @@
   "properties": {
     "word": {"type": "string", "minLength": 1},
     "ipa": {"type": "string", "minLength": 1},
-    "level": {"enum": ["A1", "A2", "B1", "B2", "C1", "C2"]},
     "frequency": {"type": "integer", "minimum": 1},
     "senses": {
       "type": "array",
@@ -47,6 +46,18 @@
               ]
             }
           }
+        },
+        "synonyms": {
+          "allOf": [
+            {"$ref": "#/$defs/uniqueEnumArray"},
+            {"items": {"type": "string", "minLength": 1}}
+          ]
+        },
+        "antonyms": {
+          "allOf": [
+            {"$ref": "#/$defs/uniqueEnumArray"},
+            {"items": {"type": "string", "minLength": 1}}
+          ]
         },
         "tags": {
           "type": "object",

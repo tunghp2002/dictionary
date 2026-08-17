@@ -23,14 +23,6 @@ SOURCES = (
         "sha256": "0af7ec077ecda0f61d4e33371cf31c3ac0a8c667150f25894787a0da9e2f3dea",
     },
     {
-        "name": "cefrj",
-        "url": (
-            "https://github.com/openlanguageprofiles/olp-en-cefrj/archive/"
-            "d4e45b75b38f27b30dfc5c44d8c571aec7e7092f.tar.gz"
-        ),
-        "sha256": "b39102ed86581e614caa7656fde63d1b8a50501622db32cb6c97ac086021667e",
-    },
-    {
         "name": "omw-data",
         "url": (
             "https://github.com/omwn/omw-data/archive/"

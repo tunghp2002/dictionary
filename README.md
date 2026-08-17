@@ -11,7 +11,6 @@ trong IndexedDB:
 {
   "word": "heavy",
   "ipa": "/ˈhɛ.vi/",
-  "level": "A1",
   "frequency": 1234,
   "senses": [
     { "id": 1000000000001, "pos": "adj" }
@@ -22,22 +21,26 @@ trong IndexedDB:
 - `word`: lemma tiếng Anh.
 - `ipa`: cách phát âm đầu tiên có trong Open English WordNet; bỏ qua nếu nguồn
   không có. Schema hiện chỉ cho phép một IPA.
-- `level`: CEFR tổng quát (`A1`–`C2`), lấy mức thấp nhất nếu một từ xuất hiện
-  ở nhiều POS/mức.
 - `frequency`: thứ hạng tần suất trong chính tập `core-en`, `1` là phổ biến
   nhất. Chỉ ghi khi `wordfreq` có số liệu.
 - `senses[].id`: số nguyên JavaScript-safe có namespace ngôn ngữ và được sắp
   tăng dần.
 - `senses[].pos`: `noun`, `verb`, `adj` hoặc `adv`.
+- `senses[].synonyms` và `senses[].antonyms`: quan hệ theo đúng synset/sense
+  của Open English WordNet; bỏ field nếu nguồn không có quan hệ.
+- `level` hiện được chủ động bỏ khỏi schema và public build vì chưa có nguồn
+  phân loại đủ rõ quyền tái phân phối.
 
 `core-en` không chứa nghĩa, ví dụ hay bản dịch tiếng Việt.
 
 ## Nguồn
 
 - Open English WordNet 2025: lemma, POS, sense và IPA.
-- CEFR-J Vocabulary Profile 1.5 + Octanove C1/C2 1.0: CEFR.
 - wordfreq 3.1.1: tần suất.
-- `trans-vi` hiện là seed thủ công, không phụ thuộc nguồn mở translation.
+- `trans-vi` dùng ngữ cảnh sense của Open English WordNet để tạo meaning tiếng
+  Việt, description tiếng Anh, ví dụ song ngữ và collocation. Nội dung được tạo
+  bằng OpenAI Batch API rồi phải vượt qua các kiểm tra cấu trúc và chất lượng
+  xác định của dự án.
 
 Các snapshot được ghim phiên bản trong `scripts/fetch_sources.py`. Xem điều
 khoản và attribution tại [DATA_LICENSES.md](DATA_LICENSES.md).
@@ -73,6 +76,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements-build.txt
 .venv/bin/python scripts/fetch_sources.py
 .venv/bin/python scripts/build_core_en.py
+.venv/bin/python scripts/merge_en_function_words_core.py
 .venv/bin/python scripts/build_trans_vi_canonical.py
 ```
 
@@ -83,15 +87,18 @@ Kết quả:
 - `packs/en/core/sense-ids.tsv`: registry nội bộ để ID không đổi giữa các lần build.
 - `packs/en/trans-vi/data.jsonl`: toàn bộ sense English theo `sense_id`; sense
   chưa dịch là placeholder.
-- `packs/en/trans-vi/seed.jsonl`: các record translation đã điền thủ công.
+- `packs/en/trans-vi/seed.jsonl`: bản sao nguồn canonical dùng để tái build pack.
 - `packs/en/trans-vi/meta.json`: số record đã điền, placeholder và checksum.
 
 ### English–Vietnamese canonical data
 
 `packs/en/trans-vi/data.jsonl` là dataset canonical cho toàn bộ sense ID tiếng
-Anh. Mỗi `meaning` là nghĩa tiếng Việt ngắn gọn; `description`, ví dụ và
-collocation chỉ được giữ khi có dữ liệu rich đã duyệt. Các hàng đợi review
-và batch 30.000 từ từ quy trình cũ không còn thuộc repository.
+Anh. Mỗi `meaning` là nghĩa tiếng Việt ngắn gọn; `description` là mô tả tiếng
+Anh theo gloss OEWN của sense. Ví dụ và collocation chỉ được giữ khi vượt qua
+validator của dự án (schema, ngôn ngữ, dấu câu, headword và các mẫu placeholder
+hoặc ghi chú biên tập). Đây là kiểm định tự động, không phải tuyên bố rằng toàn
+bộ 185.456 sense đã được con người duyệt. Các hàng đợi review và batch không
+thuộc repository.
 
 Core sense dùng schema chung. Các trường metadata rỗng được bỏ khỏi JSONL để
 giảm kích thước:
@@ -123,7 +130,7 @@ giảm kích thước:
 - `tags.domains`: tối đa hai domain trong enum của
   `packs/en/core/schema.json`.
 
-Không dùng `Common` vì core đã có `frequency`/`level`; không dùng `Technical`
+Không dùng `Common` vì core đã có `frequency`; không dùng `Technical`
 vì quá chung. Tag tên kỳ thi (`IELTS`, `TOEFL`, `TOEIC`, `SAT`, ...) không
 phải thuộc tính của sense. Nếu cần, mỗi kỳ thi sẽ là một collection có nguồn
 riêng chứa danh sách `sense_id`; AI không tự đoán.
@@ -166,6 +173,18 @@ namespace × 10^12 + local_id
   tiếng Việt không tự tạo ID namespace mới.
 - ID đã cấp được lưu trong registry và không tái sử dụng, kể cả khi sense bị
   xóa khỏi nguồn.
+
+## License
+
+- Code, scripts, tests, schemas và tài liệu: Apache-2.0, xem `LICENSE`.
+- Các file dataset trong `packs/` (trừ schema): CC BY-SA 4.0, xem
+  `LICENSE-DATA.md`.
+- Attribution và điều khoản nguồn bên thứ ba: `NOTICE.md` và
+  `DATA_LICENSES.md`.
+
+Các file dữ liệu phái sinh phải giữ attribution, nêu rõ thay đổi và tiếp tục
+dùng CC BY-SA 4.0. License Apache-2.0 vẫn áp dụng cho các file schema; không áp
+dụng cho các file dataset khác trong `packs/`.
 
 Mỗi namespace có tối đa `999.999.999.999` sense. Namespace được giới hạn từ
 `1` đến `999`, nên toàn bộ ID vẫn nằm trong miền số nguyên an toàn của

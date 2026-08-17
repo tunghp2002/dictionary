@@ -48,19 +48,6 @@ The required WordNet notice is reproduced below:
 > documentation shall at all times remain with Princeton University and
 > LICENSEE agrees to preserve same.
 
-## CEFR-J and Octanove vocabulary profiles
-
-The CEFR-J Wordlist Version 1.5 was compiled by Yukio Tono, Tokyo University
-of Foreign Studies. It may be used for research and commercial purposes
-without charge when cited properly. Copyright belongs to Tono Laboratory at
-TUFS.
-
-The Octanove Vocabulary Profile C1/C2 Version 1.0 is licensed under
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
-
-- Project: https://github.com/openlanguageprofiles/olp-en-cefrj
-- Snapshot: `d4e45b75b38f27b30dfc5c44d8c571aec7e7092f`
-
 ## wordfreq 3.1.1
 
 Copyright © Robyn Speer and contributors. The software is Apache-2.0 and its
@@ -77,10 +64,16 @@ Twitter and Reddit. See the upstream license section for the complete
 attribution list:
 https://github.com/rspeer/wordfreq#license
 
+The public dataset contains only a project-specific frequency rank derived
+through wordfreq, not a copy of wordfreq's underlying wordlists. Redistribution
+must retain this file and `NOTICE.md` alongside the JSONL data.
+
 ## English-to-Vietnamese translation pack
 
-The current `packs/en/trans-vi/data.jsonl` is a manually curated project seed
-and does not incorporate an external translation dataset.
+The current `packs/en/trans-vi/data.jsonl` is project-generated from the pinned
+Open English WordNet sense context with OpenAI models and deterministic project
+validators. It is not a manually curated dataset and does not incorporate an
+external translation dataset.
 
 The repository still contains an optional OMW importer for later bulk filling.
 If that importer is used, its output uses the Vietnamese Wiktionary-derived file

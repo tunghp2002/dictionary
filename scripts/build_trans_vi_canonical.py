@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Rebuild canonical Vietnamese records, preserving rich supplement fields only."""
+"""Rebuild canonical Vietnamese records, preserving validated rich fields."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -22,12 +23,22 @@ except ModuleNotFoundError:  # direct script execution
 FIELDS = ["sense_id", "meaning", "description", "examples", "collocations"]
 
 
+def _normalize_nfc(value: Any) -> Any:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, list):
+        return [_normalize_nfc(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_nfc(item) for key, item in value.items()}
+    return value
+
+
 def _read_source(path: Path, registry_ids: set[int]) -> dict[int, dict[str, Any]]:
     records: dict[int, dict[str, Any]] = {}
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
-        row = json.loads(line)
+        row = _normalize_nfc(json.loads(line))
         if not isinstance(row, dict) or set(row) != set(FIELDS):
             raise ValueError(f"source line {line_number}: expected exact canonical schema")
         sense_id = row["sense_id"]
@@ -65,7 +76,13 @@ def build_canonical(
     records = []
     for sense_id in sorted(ids):
         source_row = source.get(sense_id, {})
-        record = {"sense_id": sense_id, "meaning": str(source_row.get("meaning", "")).strip(), "description": "", "examples": [], "collocations": []}
+        record = {
+            "sense_id": sense_id,
+            "meaning": str(source_row.get("meaning", "")).strip(),
+            "description": str(source_row.get("description", "")).strip(),
+            "examples": source_row.get("examples", []),
+            "collocations": source_row.get("collocations", []),
+        }
         if sense_id in supplements:
             error = validate_rich_row(source_row) if sense_id in expansion_ids else validate_rich_row({**source_row, "meaning": "một"})
             if error:
@@ -85,7 +102,9 @@ def build_canonical(
         "key_path": "sense_id",
         "source_language": "en",
         "target_language": "vi",
-        "source": "canonical-meaning-plus-function-word-rich",
+        "license": "CC-BY-SA-4.0",
+        "attribution": "DATA_LICENSES.md",
+        "source": "canonical-meaning-plus-oewn-description-and-rich-fields",
         "records": len(records),
         "filled_records": filled,
         "placeholder_records": len(records) - filled,

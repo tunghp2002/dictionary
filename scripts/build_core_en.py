@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+from collections import defaultdict
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -28,10 +29,8 @@ POS_NAMES = {
 }
 VERB_GRAMMAR_ORDER = ("transitive", "intransitive", "linking")
 LINKING_SUBCATS = {"via-adj", "vii-adj"}
-LEVEL_ORDER = {level: index for index, level in enumerate(("A1", "A2", "B1", "B2", "C1", "C2"))}
 OEWN_RELEASE = "2025-edition"
 OEWN_COMMIT = "dc343f2683279ecbb13fab4e2fd778d7b162d287"
-CEFRJ_COMMIT = "d4e45b75b38f27b30dfc5c44d8c571aec7e7092f"
 
 
 def sense_id(local_id: int, namespace: int = LANGUAGE_NAMESPACE) -> int:
@@ -45,29 +44,6 @@ def sense_id(local_id: int, namespace: int = LANGUAGE_NAMESPACE) -> int:
     return value
 
 
-def normalize_level(raw_level: str) -> str | None:
-    level = raw_level.strip().upper()
-    for broad_level in LEVEL_ORDER:
-        if level.startswith(broad_level):
-            return broad_level
-    return None
-
-
-def load_cefr(csv_paths: Iterable[Path]) -> dict[str, str]:
-    levels: dict[str, str] = {}
-    for path in csv_paths:
-        with path.open(encoding="utf-8-sig", newline="") as handle:
-            for row in csv.DictReader(handle):
-                word = (row.get("headword") or "").strip().casefold()
-                level = normalize_level(row.get("CEFR") or "")
-                if not word or not level:
-                    continue
-                previous = levels.get(word)
-                if previous is None or LEVEL_ORDER[level] < LEVEL_ORDER[previous]:
-                    levels[word] = level
-    return levels
-
-
 def format_ipa(value: str) -> str:
     value = value.strip().strip("/")
     return f"/{value}/"
@@ -76,6 +52,8 @@ def format_ipa(value: str) -> str:
 def load_entries(entries_dir: Path) -> tuple[list[dict[str, Any]], set[str]]:
     words: dict[str, dict[str, Any]] = {}
     source_keys: set[str] = set()
+    source_words: dict[str, str] = {}
+    synset_words: dict[str, set[str]] = defaultdict(set)
     loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
     entry_files = sorted(entries_dir.glob("entries-*.yaml"))
@@ -98,16 +76,41 @@ def load_entries(entries_dir: Path) -> tuple[list[dict[str, Any]], set[str]]:
                         record["_ipas"].append(ipa)
                 for sense in part.get("sense", ()):
                     source_key = str(sense["id"])
+                    synset = str(sense["synset"])
                     if source_key in source_keys:
                         raise RuntimeError(f"Duplicate source sense key: {source_key!r}")
                     source_keys.add(source_key)
+                    source_words[source_key] = word
+                    synset_words[synset].add(word)
                     record["senses"].append(
                         {
                             "_source_key": source_key,
+                            "_synset": synset,
+                            "_antonym_keys": list(sense.get("antonym", ())),
                             "_subcats": list(sense.get("subcat", ())),
                             "pos": pos,
                         }
                     )
+
+    for record in words.values():
+        for sense in record["senses"]:
+            sense["_synonyms"] = sorted(
+                {
+                    value
+                    for value in synset_words[sense["_synset"]]
+                    if value.casefold() != record["word"].casefold()
+                },
+                key=lambda value: (value.casefold(), value),
+            )
+            sense["_antonyms"] = sorted(
+                {
+                    source_words[key]
+                    for key in sense.pop("_antonym_keys")
+                    if key in source_words
+                    and source_words[key].casefold() != record["word"].casefold()
+                },
+                key=lambda value: (value.casefold(), value),
+            )
 
     return (
         sorted(words.values(), key=lambda item: (item["word"].casefold(), item["word"])),
@@ -172,7 +175,10 @@ def assign_sense_ids(
     for record in records:
         for sense in record["senses"]:
             source_key = sense.pop("_source_key")
+            sense.pop("_synset", None)
             subcats = sense.pop("_subcats", ())
+            synonyms = sense.pop("_synonyms", ())
+            antonyms = sense.pop("_antonyms", ())
             numeric_id = registry.get(source_key)
             if numeric_id is None:
                 next_local_id += 1
@@ -181,6 +187,10 @@ def assign_sense_ids(
             pos = sense["pos"]
             sense.clear()
             sense.update({"id": numeric_id, "pos": pos})
+            if synonyms:
+                sense["synonyms"] = synonyms
+            if antonyms:
+                sense["antonyms"] = antonyms
             grammar = grammar_from_subcats(pos, subcats)
             if grammar:
                 sense["grammar"] = grammar
@@ -211,19 +221,13 @@ def add_frequency_ranks(
         record["frequency"] = rank
 
 
-def finalize_records(
-    records: list[dict[str, Any]],
-    levels: dict[str, str],
-) -> None:
+def finalize_records(records: list[dict[str, Any]]) -> None:
     for record in records:
         ipas = record.pop("_ipas")
         if ipas:
             record["ipa"] = ipas[0]
-        level = levels.get(record["word"].casefold())
-        if level:
-            record["level"] = level
         ordered: dict[str, Any] = {"word": record["word"]}
-        for key in ("ipa", "level", "frequency", "senses"):
+        for key in ("ipa", "frequency", "senses"):
             if key in record:
                 ordered[key] = record[key]
         record.clear()
@@ -248,7 +252,6 @@ def file_sha256(path: Path) -> str:
 
 def build(
     oewn_dir: Path,
-    cefr_dir: Path,
     output: Path,
     metadata_output: Path,
     id_registry: Path,
@@ -257,12 +260,6 @@ def build(
     records, source_keys = load_entries(oewn_dir / "src/yaml")
     registry = load_id_registry(id_registry)
     assign_sense_ids(records, registry)
-    levels = load_cefr(
-        (
-            cefr_dir / "cefrj-vocabulary-profile-1.5.csv",
-            cefr_dir / "octanove-vocabulary-profile-c1c2-1.0.csv",
-        )
-    )
     if include_frequency:
         try:
             from wordfreq import zipf_frequency
@@ -273,11 +270,11 @@ def build(
         print("Calculating frequency ranks...")
         add_frequency_ranks(records, lambda word: zipf_frequency(word, "en"))
 
-    finalize_records(records, levels)
+    finalize_records(records)
     write_jsonl(output, records)
     write_id_registry(id_registry, registry)
     metadata = {
-        "schema_version": 3,
+        "schema_version": 5,
         "key_path": "word",
         "sense_id": {
             "format": "namespace * 10^12 + local_id",
@@ -291,12 +288,17 @@ def build(
         "senses": len(source_keys),
         "reserved_sense_ids": len(registry),
         "with_ipa": sum("ipa" in record for record in records),
-        "with_level": sum("level" in record for record in records),
         "with_frequency": sum("frequency" in record for record in records),
         "senses_with_grammar": sum(
             "grammar" in sense
             for record in records
             for sense in record["senses"]
+        ),
+        "senses_with_synonyms": sum(
+            "synonyms" in sense for record in records for sense in record["senses"]
+        ),
+        "senses_with_antonyms": sum(
+            "antonyms" in sense for record in records for sense in record["senses"]
         ),
         "schema": "packs/en/core/schema.json",
         "sources": {
@@ -304,7 +306,6 @@ def build(
                 "release": OEWN_RELEASE,
                 "commit": OEWN_COMMIT,
             },
-            "cefrj": {"commit": CEFRJ_COMMIT},
             "wordfreq": "3.1.1" if include_frequency else None,
         },
         "output": {
@@ -329,11 +330,6 @@ def main() -> None:
         default=Path(".cache/sources/oewn-2025"),
     )
     parser.add_argument(
-        "--cefr-dir",
-        type=Path,
-        default=Path(".cache/sources/cefrj"),
-    )
-    parser.add_argument(
         "--output",
         type=Path,
         default=Path("packs/en/core/data.jsonl"),
@@ -352,7 +348,6 @@ def main() -> None:
     args = parser.parse_args()
     metadata = build(
         args.oewn_dir,
-        args.cefr_dir,
         args.output,
         args.metadata_output,
         args.id_registry,

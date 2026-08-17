@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "key_path": "word",
   "sense_id": {
     "format": "namespace * 10^12 + local_id",
@@ -13,23 +13,21 @@
   "senses": 185456,
   "reserved_sense_ids": 185456,
   "with_ipa": 27940,
-  "with_level": 8336,
   "with_frequency": 103989,
   "senses_with_grammar": 25096,
+  "senses_with_synonyms": 122513,
+  "senses_with_antonyms": 7772,
   "schema": "packs/en/core/schema.json",
   "sources": {
     "open_english_wordnet": {
       "release": "2025-edition",
       "commit": "dc343f2683279ecbb13fab4e2fd778d7b162d287"
     },
-    "cefrj": {
-      "commit": "d4e45b75b38f27b30dfc5c44d8c571aec7e7092f"
-    },
     "wordfreq": "3.1.1"
   },
   "output": {
     "path": "packs/en/core/data.jsonl",
-    "sha256": "0ed11ae05eccdd0fe686bb5a4ff532d3b77aeaee4e2121b5147d7c76590a7850",
-    "bytes": 14357370
+    "sha256": "acafc527c15546f4f235e2f6d8a953e61982b33c188197919846acd303d7281f",
+    "bytes": 19696989
   }
 }

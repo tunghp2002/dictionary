@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import tempfile
@@ -59,6 +60,12 @@ def _refresh_metadata(meta_path: Path, core_path: Path, records: list[dict[str, 
     metadata["senses"] = sum(len(record["senses"]) for record in records)
     metadata["reserved_sense_ids"] = len(registry)
     metadata["with_frequency"] = sum("frequency" in record for record in records)
+    metadata["senses_with_synonyms"] = sum(
+        "synonyms" in sense for record in records for sense in record["senses"]
+    )
+    metadata["senses_with_antonyms"] = sum(
+        "antonyms" in sense for record in records for sense in record["senses"]
+    )
     metadata["output"]["sha256"] = sha256(payload).hexdigest()
     metadata["output"]["bytes"] = len(payload)
     temporary = meta_path.with_suffix(meta_path.suffix + ".tmp")
@@ -148,3 +155,17 @@ def merge_function_words_into_core(
     if meta_path is not None:
         _refresh_metadata(meta_path, core_path, records, registry)
     return len(rows)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--core", type=Path, default=Path("packs/en/core/data.jsonl"))
+    parser.add_argument("--function-words", type=Path, default=Path("packs/en/core/function-words.jsonl"))
+    parser.add_argument("--registry", type=Path, default=Path("packs/en/core/sense-ids.tsv"))
+    parser.add_argument("--meta", type=Path, default=Path("packs/en/core/meta.json"))
+    args = parser.parse_args()
+    print(merge_function_words_into_core(args.core, args.function_words, args.registry, args.meta))
+
+
+if __name__ == "__main__":
+    main()

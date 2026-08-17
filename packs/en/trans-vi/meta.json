@@ -3,7 +3,9 @@
   "key_path": "sense_id",
   "source_language": "en",
   "target_language": "vi",
-  "source": "canonical-meaning-plus-function-word-rich",
+  "license": "CC-BY-SA-4.0",
+  "attribution": "DATA_LICENSES.md",
+  "source": "canonical-meaning-plus-oewn-description-and-rich-fields",
   "records": 185456,
   "filled_records": 185456,
   "placeholder_records": 0,
@@ -19,7 +21,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "c0122b81d1f5db0d1ecf87f3c944380c34dbcb21f66a6390da4473af8d8bef72",
-    "bytes": 20139063
+    "sha256": "161abb63e9df22c527a9641ae7f8aec879f629a0ec87b69b8e3c23c85165c76e",
+    "bytes": 55199923
   }
 }
