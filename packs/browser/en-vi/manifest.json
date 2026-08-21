@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "version": "acafc527c155-161abb63e9df",
+  "version": "3c4a6c8c1de7-d59cb934b720",
   "shardCount": 256,
-  "records": 128186,
-  "senses": 185456,
+  "records": 128239,
+  "senses": 185553,
   "license": "CC-BY-SA-4.0",
   "attribution": "https://github.com/tunghp2002/dictionary/blob/main/DATA_LICENSES.md"
 }
