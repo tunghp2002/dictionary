@@ -65,7 +65,7 @@ def build_canonical(
     registry = load_id_registry(registry_path)
     ids = set(registry.values())
     source = _read_source(source_path, ids)
-    supplements = {sense_id for source_key, sense_id in registry.items() if source_key.startswith("supplement:function:")}
+    supplements = {sense_id for source_key, sense_id in registry.items() if source_key.startswith("supplement:")}
     expansion_manifest = registry_path.parent / "function-words-expansion.jsonl"
     expansion_ids = ({registry[row["source_key"]] for row in load_function_words(expansion_manifest)}
                      if expansion_manifest.exists() else supplements)

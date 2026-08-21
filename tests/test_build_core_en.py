@@ -78,6 +78,14 @@ class BuildCoreEnTest(unittest.TestCase):
         self.assertNotIn("meaning", records[0])
         self.assertNotIn("vi", records[0])
 
+    def test_finalize_preserves_embedded_learning(self):
+        records = [{
+            "word": "increase", "_ipas": [], "senses": [{"id": 1, "pos": "verb"}],
+            "learning": {"grammar_patterns": [{"pattern": "increase by + amount", "vi": "tăng thêm"}], "word_family": [], "usage_notes": [], "confusables": []},
+        }]
+        finalize_records(records)
+        self.assertIn("learning", records[0])
+
     def test_registry_keeps_old_ids_and_sorts_them(self):
         records = [
             {

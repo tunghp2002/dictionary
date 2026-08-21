@@ -196,12 +196,13 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
             registry[row["source_key"]]: row
             for row in read_jsonl(root / "packs/en/core/function-words.jsonl")
         }
-        self.assertEqual(len(expected), 327)
-        informal_ids = {
-            numeric_id for numeric_id, row in expected.items()
-            if row.get("register") == "informal"
+        self.assertEqual(len(expected), 424)
+        tagged_ids = {
+            numeric_id: row["register"] for numeric_id, row in expected.items()
+            if "register" in row
         }
-        self.assertEqual(len(informal_ids), 8)
+        self.assertEqual(sum(register == "informal" for register in tagged_ids.values()), 10)
+        self.assertEqual(sum(register == "slang" for register in tagged_ids.values()), 87)
         occurrences = Counter()
         for record in read_jsonl(root / "packs/en/core/data.jsonl"):
             for sense in record["senses"]:
@@ -209,8 +210,8 @@ class MergeEnFunctionWordsCoreTest(unittest.TestCase):
                     continue
                 occurrences[sense["id"]] += 1
                 self.assertEqual(sense["pos"], expected[sense["id"]]["category"])
-                if sense["id"] in informal_ids:
-                    self.assertEqual(sense.get("tags", {}).get("register"), ["informal"])
+                if sense["id"] in tagged_ids:
+                    self.assertEqual(sense.get("tags", {}).get("register"), [tagged_ids[sense["id"]]])
                 else:
                     self.assertNotIn("tags", sense)
         self.assertEqual(set(occurrences), set(expected))

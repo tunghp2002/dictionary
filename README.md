@@ -1,11 +1,15 @@
 # core-en
 
-Pipeline tạo dữ liệu tiếng Anh dùng chung cho ứng dụng từ điển.
+A reproducible English–Vietnamese dictionary-data pipeline. It builds a shared
+English core indexed by headword and a Vietnamese translation pack indexed by
+stable sense ID. The current snapshot contains **128,239 headwords** and
+**185,553 English senses**; every English sense has a Vietnamese meaning.
 
-## Schema
+## Data model
 
-Mỗi dòng trong `packs/en/core/data.jsonl` là một JSON object, dùng `word` làm key
-trong IndexedDB:
+Each line of `packs/en/core/data.jsonl` is one JSON object keyed by `word`,
+which makes it suitable for direct import into IndexedDB or another
+headword-keyed store.
 
 ```json
 {
@@ -13,39 +17,107 @@ trong IndexedDB:
   "ipa": "/ˈhɛ.vi/",
   "frequency": 1234,
   "senses": [
-    { "id": 1000000000001, "pos": "adj" }
+    {"id": 1000000000001, "pos": "adj"}
   ]
 }
 ```
 
-- `word`: lemma tiếng Anh.
-- `ipa`: cách phát âm đầu tiên có trong Open English WordNet; bỏ qua nếu nguồn
-  không có. Schema hiện chỉ cho phép một IPA.
-- `frequency`: thứ hạng tần suất trong chính tập `core-en`, `1` là phổ biến
-  nhất. Chỉ ghi khi `wordfreq` có số liệu.
-- `senses[].id`: số nguyên JavaScript-safe có namespace ngôn ngữ và được sắp
-  tăng dần.
-- `senses[].pos`: `noun`, `verb`, `adj` hoặc `adv`.
-- `senses[].synonyms` và `senses[].antonyms`: quan hệ theo đúng synset/sense
-  của Open English WordNet; bỏ field nếu nguồn không có quan hệ.
-- `level` hiện được chủ động bỏ khỏi schema và public build vì chưa có nguồn
-  phân loại đủ rõ quyền tái phân phối.
+- `word` is the English lemma or expression.
+- `ipa` is the first pronunciation available in Open English WordNet; it is
+  omitted when the source has none.
+- `frequency` is a rank within this core: `1` is most frequent. It is present
+  only when `wordfreq` provides a score.
+- `senses[].id` is a JavaScript-safe, stable integer.
+- `senses[].pos` uses the controlled POS vocabulary in
+  `packs/en/core/schema.json` (for example `noun`, `verb`, `adj`, `adv`,
+  `pronoun`, `preposition`, and `interjection`).
+- A sense may also contain `grammar`, `synonyms`, `antonyms`,
+  `expression_type`, and `tags`. Empty optional fields are omitted to keep the
+  JSONL compact.
 
-`core-en` không chứa nghĩa, ví dụ hay bản dịch tiếng Việt.
+The core deliberately has no unproven proficiency or exam-level field.
 
-## Nguồn
+### Pack relationship
 
-- Open English WordNet 2025: lemma, POS, sense và IPA.
-- wordfreq 3.1.1: tần suất.
-- `trans-vi` dùng ngữ cảnh sense của Open English WordNet để tạo meaning tiếng
-  Việt, description tiếng Anh, ví dụ song ngữ và collocation. Nội dung được tạo
-  bằng OpenAI Batch API rồi phải vượt qua các kiểm tra cấu trúc và chất lượng
-  xác định của dự án.
+| Pack | Key | Contents |
+| --- | --- | --- |
+| `packs/en/core/` | `word` | English headwords, senses, lexical metadata, and optional learning notes |
+| `packs/en/trans-vi/` | `sense_id` | Vietnamese meanings plus English descriptions, examples, and collocations |
 
-Các snapshot được ghim phiên bản trong `scripts/fetch_sources.py`. Xem điều
-khoản và attribution tại [DATA_LICENSES.md](DATA_LICENSES.md).
+The client resolves a definition by reading a core record and then looking up
+each of its sense IDs in `trans-vi`. This separation lets translations be
+updated without changing English sense IDs.
 
-## Pack layout
+## Learning notes
+
+An optional `learning` field is embedded directly in the relevant core record.
+It contains concise Vietnamese study guidance and is not an official exam-word
+list.
+
+```json
+{
+  "word": "increase",
+  "senses": [{"id": 1000000000123, "pos": "verb"}],
+  "learning": {
+    "grammar_patterns": [
+      {"pattern": "increase by + amount", "vi": "tăng thêm bao nhiêu"}
+    ],
+    "word_family": [{"word": "increasing"}],
+    "usage_notes": [],
+    "confusables": [{"word": "rise", "vi": "rise thường không có tân ngữ"}]
+  }
+}
+```
+
+`word_family` is a reference only: every item points to a different, existing
+headword in the same core. It never repeats a POS, Vietnamese meaning, or a
+sense ID. The application follows that link to retrieve the target word's
+current senses and translations from the same datasets.
+
+`scripts/batch_learning_vi.py` creates notes only for headwords without a
+`learning` field. Its merge step removes self-links, duplicate links, and links
+to headwords that do not exist in the core.
+
+## English–Vietnamese translations
+
+`packs/en/trans-vi/data.jsonl` is the canonical Vietnamese translation dataset.
+Each row contains a concise Vietnamese `meaning` and the English OEWN gloss as
+`description`. `examples` and `collocations` are included only when they pass
+the project's structural and quality checks.
+
+```json
+{
+  "sense_id": 1000000075634,
+  "meaning": "nặng",
+  "description": "of comparatively great physical weight or density",
+  "examples": [
+    {"en": "This box is heavy.", "vi": "Cái hộp này nặng."}
+  ],
+  "collocations": ["heavy bag", "heavy suitcase"]
+}
+```
+
+All **185,553** current core senses have a Vietnamese meaning. Translation and
+learning content is machine-generated, then checked by deterministic project
+validators; it has not received comprehensive human editorial review or a
+formal human benchmark. Keep `sense_id` unchanged when editing translations,
+then run `scripts/build_trans_vi_canonical.py` to synchronize `data.jsonl`,
+`seed.jsonl`, and metadata.
+
+## Sources and attribution
+
+- [Open English WordNet 2025](https://en-word.net/): headwords, parts of
+  speech, senses, lexical relations, and IPA where available. The exact source
+  revision is pinned in `packs/en/core/meta.json`.
+- [wordfreq 3.1.1](https://github.com/rspeer/wordfreq): frequency ranks.
+- OpenAI Batch API: Vietnamese translations and learning-note enrichment,
+  subject to the validation described above.
+
+Source snapshots are pinned by `scripts/fetch_sources.py`. See
+[DATA_LICENSES.md](DATA_LICENSES.md) and [NOTICE.md](NOTICE.md) for full
+attribution and third-party terms.
+
+## Repository layout
 
 ```text
 packs/
@@ -63,13 +135,13 @@ packs/
     └── trans-vi/
 ```
 
-Mỗi pack có thể chứa `data.jsonl` và `meta.json`; `core` có thêm registry
-`sense-ids.tsv`. Hiện dữ liệu thật có trong `packs/en/core/` và
-`packs/en/trans-vi/`.
+Each pack may contain `data.jsonl` and `meta.json`. The English core also has
+`sense-ids.tsv`, the registry that reserves issued IDs. The populated public
+data is currently in `packs/en/core/` and `packs/en/trans-vi/`.
 
 ## Build
 
-Yêu cầu Python 3.11+:
+Requires Python 3.11+.
 
 ```bash
 python -m venv .venv
@@ -80,112 +152,47 @@ python -m venv .venv
 .venv/bin/python scripts/build_trans_vi_canonical.py
 ```
 
-Kết quả:
+Build outputs:
 
-- `packs/en/core/data.jsonl`: dữ liệu để import vào IndexedDB.
-- `packs/en/core/meta.json`: phiên bản nguồn, số lượng và SHA-256 của output.
-- `packs/en/core/sense-ids.tsv`: registry nội bộ để ID không đổi giữa các lần build.
-- `packs/en/trans-vi/data.jsonl`: toàn bộ sense English theo `sense_id`; sense
-  chưa dịch là placeholder.
-- `packs/en/trans-vi/seed.jsonl`: bản sao nguồn canonical dùng để tái build pack.
-- `packs/en/trans-vi/meta.json`: số record đã điền, placeholder và checksum.
+- `packs/en/core/data.jsonl`: core data for a headword-keyed store.
+- `packs/en/core/meta.json`: source revisions, counts, and output checksum.
+- `packs/en/core/sense-ids.tsv`: stable internal sense-ID registry.
+- `packs/en/trans-vi/data.jsonl`: Vietnamese data for every English sense.
+- `packs/en/trans-vi/seed.jsonl`: canonical input used to rebuild the
+  translation pack.
+- `packs/en/trans-vi/meta.json`: translation coverage, counts, and checksum.
 
-### English–Vietnamese canonical data
-
-`packs/en/trans-vi/data.jsonl` là dataset canonical cho toàn bộ sense ID tiếng
-Anh. Mỗi `meaning` là nghĩa tiếng Việt ngắn gọn; `description` là mô tả tiếng
-Anh theo gloss OEWN của sense. Ví dụ và collocation chỉ được giữ khi vượt qua
-validator của dự án (schema, ngôn ngữ, dấu câu, headword và các mẫu placeholder
-hoặc ghi chú biên tập). Đây là kiểm định tự động, không phải tuyên bố rằng toàn
-bộ 185.456 sense đã được con người duyệt. Các hàng đợi review và batch không
-thuộc repository.
-
-Core sense dùng schema chung. Các trường metadata rỗng được bỏ khỏi JSONL để
-giảm kích thước:
-
-```json
-{
-  "id": 1000000075634,
-  "pos": "verb",
-  "expression_type": "phrasal_verb",
-  "grammar": {
-    "verb_type": ["transitive", "intransitive"]
-  },
-  "tags": {
-    "register": ["informal"],
-    "usage": [],
-    "region": ["GB"],
-    "domains": []
-  }
-}
-```
-
-- `grammar.countability`: `countable`, `uncountable`.
-- `grammar.verb_type`: `transitive`, `intransitive`, `linking`.
-- `expression_type`: `compound`, `phrasal_verb`, `idiom`; bỏ field với từ đơn.
-- `tags.register`: `formal`, `informal`, `slang`, `literary`, `vulgar`.
-- `tags.usage`: `archaic`, `dated`, `derogatory`, `euphemistic`, `figurative`,
-  `humorous`, `offensive`, `rare`.
-- `tags.region`: mã vùng `AU`, `CA`, `GB`, `IE`, `IN`, `NZ`, `US`, `ZA`.
-- `tags.domains`: tối đa hai domain trong enum của
-  `packs/en/core/schema.json`.
-
-Không dùng `Common` vì core đã có `frequency`; không dùng `Technical`
-vì quá chung. Tag tên kỳ thi (`IELTS`, `TOEFL`, `TOEIC`, `SAT`, ...) không
-phải thuộc tính của sense. Nếu cần, mỗi kỳ thi sẽ là một collection có nguồn
-riêng chứa danh sách `sense_id`; AI không tự đoán.
-
-Translation pack chỉ chứa dữ liệu theo ngôn ngữ:
-
-```json
-{
-  "sense_id": 1000000075634,
-  "meaning": "nặng",
-  "description": "of comparatively great physical weight or density",
-  "examples": [
-    {"en": "This box is heavy.", "vi": "Cái hộp này nặng."}
-  ],
-  "collocations": ["heavy bag", "heavy suitcase"]
-}
-```
-
-Khung hiện có `185.456` sense của core và đã có meaning tiếng Việt cho tất
-cả. Khi cập nhật bản dịch, giữ nguyên `sense_id` rồi chạy
-`scripts/build_trans_vi_canonical.py` để đồng bộ `data.jsonl`, `seed.jsonl` và metadata.
-
-Kiểm thử:
+Run the test suite with:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests
 ```
 
-## Sense ID
+## Sense IDs
 
-ID dùng format:
+Sense IDs use this format:
 
 ```text
 namespace × 10^12 + local_id
 ```
 
-- English có namespace `1`: `1000000000001`, `1000000000002`, ...
-- Một core ngôn ngữ khác sẽ nhận namespace `2`, `3`, ...
-- Translation của core English luôn tham chiếu ID namespace `1`; bản dịch
-  tiếng Việt không tự tạo ID namespace mới.
-- ID đã cấp được lưu trong registry và không tái sử dụng, kể cả khi sense bị
-  xóa khỏi nguồn.
+- English uses namespace `1`: `1000000000001`, `1000000000002`, and so on.
+- Other language cores receive namespaces `2`, `3`, and so on.
+- Translation rows for the English core always reference namespace `1`; a
+  Vietnamese translation never creates a new namespace.
+- Issued IDs remain reserved in `sense-ids.tsv` and are never reused, even if
+  a source sense disappears.
+
+A namespace supports up to `999,999,999,999` senses. Namespaces `1` through
+`999` keep every ID within JavaScript's safe-integer range.
 
 ## License
 
-- Code, scripts, tests, schemas và tài liệu: Apache-2.0, xem `LICENSE`.
-- Các file dataset trong `packs/` (trừ schema): CC BY-SA 4.0, xem
-  `LICENSE-DATA.md`.
-- Attribution và điều khoản nguồn bên thứ ba: `NOTICE.md` và
-  `DATA_LICENSES.md`.
+- Code, scripts, tests, schemas, and documentation: [Apache-2.0](LICENSE).
+- Dataset files under `packs/`, except schemas: [CC BY-SA 4.0](LICENSE-DATA.md).
+- Third-party attribution and licensing: [NOTICE.md](NOTICE.md) and
+  [DATA_LICENSES.md](DATA_LICENSES.md).
 
-Các file dữ liệu phái sinh phải giữ attribution, nêu rõ thay đổi và tiếp tục
-dùng CC BY-SA 4.0. License Apache-2.0 vẫn áp dụng cho các file schema; không áp
-dụng cho các file dataset khác trong `packs/`.
-
-Mỗi namespace có tối đa `999.999.999.999` sense. Namespace được giới hạn từ
-`1` đến `999`, nên toàn bộ ID vẫn nằm trong miền số nguyên an toàn của
-JavaScript.
+Derived dataset files must retain attribution, state changes, and remain under
+CC BY-SA 4.0. Apache-2.0 continues to apply to schema files, not to the other
+dataset files in `packs/`.

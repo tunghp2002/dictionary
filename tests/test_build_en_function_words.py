@@ -39,6 +39,15 @@ class BuildEnFunctionWordsTest(unittest.TestCase):
             write_table(table_path, [row("supplement:function:lemme:contraction", "lemme", category="contraction")])
             with self.assertRaisesRegex(ValueError, "invalid contraction spelling"):
                 load_function_words(table_path)
+
+    def test_accepts_curated_title_noun(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            table_path = Path(temp_name) / "table.jsonl"
+            title = row("supplement:function:prof.:noun", "Prof.", category="noun")
+            title["pos"] = "noun"
+            write_table(table_path, [title])
+            self.assertEqual(load_function_words(table_path), [title])
+
     def test_queue_appends_ids_and_sorts_priority(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
@@ -73,16 +82,18 @@ class BuildEnFunctionWordsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate source_key"):
                 build_function_word_queue(table_path, registry_path)
 
-    def test_rejects_prohibited_category(self):
+    def test_accepts_curated_slang_interjection(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
             table_path = root / "table.jsonl"
             registry_path = root / "sense-ids.tsv"
             registry_path.write_text("sense_id\tsource_key\n", encoding="utf-8")
-            write_table(table_path, [row("supplement:function:run:verb", "run", category="verb")])
+            slang = row("supplement:colloquial:lol:interjection", "LOL", category="interjection")
+            slang["pos"] = "interjection"
+            slang["register"] = "slang"
+            write_table(table_path, [slang])
 
-            with self.assertRaisesRegex(ValueError, "prohibited category"):
-                build_function_word_queue(table_path, registry_path)
+            self.assertEqual([slang], load_function_words(table_path))
 
 
 if __name__ == "__main__":

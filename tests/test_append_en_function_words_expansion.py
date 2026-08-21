@@ -75,7 +75,7 @@ class AppendEnFunctionWordsExpansionTest(unittest.TestCase):
         manifest = {row["source_key"]: row for row in load_function_words(EXPANSION)}
         source_rows = load_function_words(ROOT / "packs/en/core/function-words.jsonl")
         authoritative = {row["source_key"]: row for row in source_rows if row["source_key"] in manifest}
-        self.assertEqual(327, len(source_rows))
+        self.assertEqual(424, len(source_rows))
         self.assertEqual(manifest, authoritative)
     def test_expansion_has_the_exact_184_approved_pairs(self):
         rows = load_function_words(EXPANSION)

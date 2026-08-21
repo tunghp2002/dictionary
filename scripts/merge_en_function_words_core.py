@@ -122,8 +122,8 @@ def merge_function_words_into_core(
             record["frequency"] = min(record.get("frequency", row["priority"]), row["priority"])
         sense = next((sense for sense in record["senses"] if sense["id"] == numeric_id), None)
         normalized_sense = {"id": numeric_id, "pos": row["category"]}
-        if row.get("register") == "informal":
-            normalized_sense["tags"] = {"register": ["informal"]}
+        if row.get("register") in {"informal", "slang"}:
+            normalized_sense["tags"] = {"register": [row["register"]]}
         if sense is None:
             record["senses"].append(normalized_sense)
         else:

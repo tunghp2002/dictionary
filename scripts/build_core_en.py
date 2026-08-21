@@ -227,7 +227,7 @@ def finalize_records(records: list[dict[str, Any]]) -> None:
         if ipas:
             record["ipa"] = ipas[0]
         ordered: dict[str, Any] = {"word": record["word"]}
-        for key in ("ipa", "frequency", "senses"):
+        for key in ("ipa", "frequency", "senses", "learning"):
             if key in record:
                 ordered[key] = record[key]
         record.clear()
@@ -250,6 +250,17 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def existing_learning(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    return {
+        row["word"].casefold(): row["learning"]
+        for line in path.read_text(encoding="utf-8").splitlines() if line
+        for row in [json.loads(line)]
+        if isinstance(row.get("learning"), dict)
+    }
+
+
 def build(
     oewn_dir: Path,
     output: Path,
@@ -257,6 +268,7 @@ def build(
     id_registry: Path,
     include_frequency: bool = True,
 ) -> dict[str, Any]:
+    learning = existing_learning(output)
     records, source_keys = load_entries(oewn_dir / "src/yaml")
     registry = load_id_registry(id_registry)
     assign_sense_ids(records, registry)
@@ -269,6 +281,10 @@ def build(
             ) from error
         print("Calculating frequency ranks...")
         add_frequency_ranks(records, lambda word: zipf_frequency(word, "en"))
+
+    for record in records:
+        if value := learning.get(record["word"].casefold()):
+            record["learning"] = value
 
     finalize_records(records)
     write_jsonl(output, records)
