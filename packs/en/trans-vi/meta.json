@@ -6,10 +6,10 @@
   "license": "CC-BY-SA-4.0",
   "attribution": "DATA_LICENSES.md",
   "source": "canonical-meaning-plus-oewn-description-and-rich-fields",
-  "records": 185456,
-  "filled_records": 185456,
+  "records": 185553,
+  "filled_records": 185553,
   "placeholder_records": 0,
-  "core_senses": 185456,
+  "core_senses": 185553,
   "coverage": 1.0,
   "fields": [
     "sense_id",
@@ -21,7 +21,7 @@
   "schema": "packs/en/trans-vi/schema.json",
   "output": {
     "path": "packs/en/trans-vi/data.jsonl",
-    "sha256": "161abb63e9df22c527a9641ae7f8aec879f629a0ec87b69b8e3c23c85165c76e",
-    "bytes": 55199923
+    "sha256": "d59cb934b720d1d0a035bc1769ceda270c21c17d7105377296ee9595c4df2707",
+    "bytes": 55228128
   }
 }

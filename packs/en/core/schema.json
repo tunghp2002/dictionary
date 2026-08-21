@@ -8,12 +8,24 @@
     "word": {"type": "string", "minLength": 1},
     "ipa": {"type": "string", "minLength": 1},
     "frequency": {"type": "integer", "minimum": 1},
+    "learning": {"$ref": "#/$defs/learning"},
     "senses": {
       "type": "array",
       "items": {"$ref": "#/$defs/sense"}
     }
   },
   "$defs": {
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grammar_patterns", "word_family", "usage_notes", "confusables"],
+      "properties": {
+        "grammar_patterns": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["pattern", "vi"], "properties": {"pattern": {"type": "string", "minLength": 1}, "vi": {"type": "string", "minLength": 1}}}},
+        "word_family": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["word"], "properties": {"word": {"type": "string", "minLength": 1}}}},
+        "usage_notes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["en", "vi"], "properties": {"en": {"type": "string", "minLength": 1}, "vi": {"type": "string", "minLength": 1}}}},
+        "confusables": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["word", "vi"], "properties": {"word": {"type": "string", "minLength": 1}, "vi": {"type": "string", "minLength": 1}}}}
+      }
+    },
     "uniqueEnumArray": {
       "type": "array",
       "uniqueItems": true
@@ -24,7 +36,7 @@
       "required": ["id", "pos"],
       "properties": {
         "id": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
-        "pos": {"enum": ["noun", "verb", "adj", "adv", "pronoun", "article", "determiner", "preposition", "conjunction", "auxiliary", "modal", "negator", "particle", "discourse_adverb", "quantifier", "distributive", "contraction"]},
+        "pos": {"enum": ["noun", "verb", "adj", "adv", "interjection", "pronoun", "article", "determiner", "preposition", "conjunction", "auxiliary", "modal", "negator", "particle", "discourse_adverb", "quantifier", "distributive", "contraction"]},
         "expression_type": {
           "enum": ["compound", "phrasal_verb", "idiom"],
           "description": "Omitted for an ordinary single word."

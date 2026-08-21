@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assign stable IDs to the curated English function-word supplement."""
+"""Assign stable IDs to curated English supplemental senses."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ REQUIRED_FIELDS = {
 ALLOWED_CATEGORIES = {
     "pronoun", "article", "determiner", "quantifier", "distributive",
     "preposition", "conjunction", "auxiliary", "modal", "negator",
-    "particle", "discourse_adverb", "contraction", "adv",
+    "particle", "discourse_adverb", "contraction", "adv", "noun", "verb", "adj", "interjection",
 }
 OPTIONAL_FIELDS = {"register"}
 
@@ -50,11 +50,11 @@ def load_function_words(path: Path) -> list[dict[str, Any]]:
         source_key = row["source_key"]
         if source_key in source_keys:
             raise ValueError(f"duplicate source_key: {source_key}")
-        if not source_key.startswith("supplement:function:"):
+        if not source_key.startswith(("supplement:function:", "supplement:colloquial:")):
             raise ValueError(f"invalid source_key: {source_key}")
         if row["category"] not in ALLOWED_CATEGORIES:
             raise ValueError(f"prohibited category: {row['category']}")
-        if "register" in row and row["register"] != "informal":
+        if "register" in row and row["register"] not in {"informal", "slang"}:
             raise ValueError(f"invalid register: {row['register']}")
         if row["category"] == "contraction" and "'" not in row["word"] and row.get("register") != "informal":
             raise ValueError(f"invalid contraction spelling: {row['word']}")

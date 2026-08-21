@@ -36,7 +36,7 @@ ASCII_WORD_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
 ENGLISH_TYPOGRAPHY = set("‘’“”–—…")
 GRAMMAR_WORDS = {
     "adjective", "adverb", "adverbial", "article", "auxiliary", "clause", "conjunction",
-    "contraction", "determiner", "form", "interrogative", "modal", "negator", "noun",
+    "contraction", "determiner", "discourse", "form", "interjection", "interrogative", "modal", "negator", "noun",
     "object", "particle", "possessive", "preposition", "pronoun", "quantifier", "relative",
     "subject", "verb",
 }
@@ -46,6 +46,7 @@ CATEGORY_DESCRIPTION_TERMS = {
     "preposition": {"preposition"}, "conjunction": {"conjunction"}, "auxiliary": {"auxiliary"},
     "modal": {"modal"}, "negator": {"negator", "negative"}, "particle": {"particle"},
     "discourse_adverb": {"adverb", "discourse"}, "adv": {"adverb"}, "contraction": {"contraction"},
+    "interjection": {"interjection", "discourse"},
 }
 SYSTEM_PROMPT = """You are a careful English-to-Vietnamese dictionary editor for English function words.
 For every supplied source row, return exactly one rich record. Follow that row's description_hint and usage_hint exactly: do not substitute a lexical, prepositional, conjunction, or other grammatical role. Meaning must be a concise natural Vietnamese headword or phrase of at most five words; avoid mechanical literal contractions. Description must be a capitalized, punctuated English grammatical explanation specific to the form and name its category. Examples must contain exactly one natural nonempty bilingual object with en and vi, and every example and collocation must use the supplied category. Collocations must contain one to three natural English phrases; each must include the input word exactly plus real surrounding context. Preserve sense_id exactly. Do not add fields."""

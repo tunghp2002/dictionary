@@ -9,11 +9,11 @@
   },
   "license": "CC-BY-SA-4.0",
   "attribution": "DATA_LICENSES.md",
-  "records": 128186,
-  "senses": 185456,
-  "reserved_sense_ids": 185456,
+  "records": 128239,
+  "senses": 185553,
+  "reserved_sense_ids": 185553,
   "with_ipa": 27940,
-  "with_frequency": 103989,
+  "with_frequency": 104042,
   "senses_with_grammar": 25096,
   "senses_with_synonyms": 122513,
   "senses_with_antonyms": 7772,
@@ -27,7 +27,7 @@
   },
   "output": {
     "path": "packs/en/core/data.jsonl",
-    "sha256": "acafc527c15546f4f235e2f6d8a953e61982b33c188197919846acd303d7281f",
-    "bytes": 19696989
+    "sha256": "3c4a6c8c1de7e4e3855b997792007b45929636b185af17b51c5bd04f0024008c",
+    "bytes": 22082581
   }
 }
